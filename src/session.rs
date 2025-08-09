@@ -24,7 +24,11 @@ impl Session {
         log::debug!("Creating new Session instance");
         let temp_dir = env::var("TMPDIR").unwrap_or_else(|_| "/tmp".to_string());
         let pid = std::process::id();
-        log::info!("Session initializing with PID={} temp_dir={}", pid, temp_dir);
+        log::info!(
+            "Session initializing with PID={} temp_dir={}",
+            pid,
+            temp_dir
+        );
 
         log::debug!("Creating PTY pair");
         let pty = PtyPair::new()?;
@@ -38,13 +42,21 @@ impl Session {
             fifos.reverse_path_str()
         );
 
-        // Set stdin to raw mode
-        log::debug!("Setting stdin to raw mode");
-        let original_termios = set_raw_mode(libc::STDIN_FILENO).map_err(|e| {
-            log::error!("Failed to set raw mode: {}", e);
-            io::Error::other(format!("Failed to set raw mode: {e}"))
-        })?;
-        log::info!("Terminal set to raw mode successfully");
+        // Set stdin to raw mode (only if it's a TTY)
+        log::debug!("Checking if stdin is a TTY");
+        let original_termios = if nix::unistd::isatty(libc::STDIN_FILENO).unwrap_or(false) {
+            log::debug!("Setting stdin to raw mode");
+            Some(set_raw_mode(libc::STDIN_FILENO).map_err(|e| {
+                log::error!("Failed to set raw mode: {}", e);
+                io::Error::other(format!("Failed to set raw mode: {e}"))
+            })?)
+        } else {
+            log::info!("Stdin is not a TTY, skipping raw mode setup");
+            None
+        };
+        if original_termios.is_some() {
+            log::info!("Terminal set to raw mode successfully");
+        }
 
         println!("Renlog starting... [PID={pid}]");
 
@@ -53,7 +65,7 @@ impl Session {
             pty,
             fifos,
             child: None,
-            original_termios: Some(original_termios),
+            original_termios,
             pid,
         })
     }
@@ -79,13 +91,29 @@ impl Session {
             self.fifos.reverse_path_str()
         );
 
-        // Set up stdio to use the PTY slave
-        cmd.stdin(unsafe { Stdio::from_raw_fd(self.pty.slave_fd()) });
-        cmd.stdout(unsafe { Stdio::from_raw_fd(self.pty.slave_fd()) });
-        cmd.stderr(unsafe { Stdio::from_raw_fd(self.pty.slave_fd()) });
+        // Set up stdio to use the PTY slave (duplicate fd for each stdio stream)
+        let slave_fd = self.pty.slave_fd();
+        let stdin_fd = unistd::dup(slave_fd).map_err(|e| {
+            log::error!("Failed to dup slave fd for stdin: {}", e);
+            io::Error::other(format!("Failed to dup slave fd for stdin: {e}"))
+        })?;
+        let stdout_fd = unistd::dup(slave_fd).map_err(|e| {
+            log::error!("Failed to dup slave fd for stdout: {}", e);
+            io::Error::other(format!("Failed to dup slave fd for stdout: {e}"))
+        })?;
+        let stderr_fd = unistd::dup(slave_fd).map_err(|e| {
+            log::error!("Failed to dup slave fd for stderr: {}", e);
+            io::Error::other(format!("Failed to dup slave fd for stderr: {e}"))
+        })?;
+
+        cmd.stdin(unsafe { Stdio::from_raw_fd(stdin_fd) });
+        cmd.stdout(unsafe { Stdio::from_raw_fd(stdout_fd) });
+        cmd.stderr(unsafe { Stdio::from_raw_fd(stderr_fd) });
         log::debug!(
-            "Configured child stdio to use PTY slave fd: {}",
-            self.pty.slave_fd()
+            "Configured child stdio to use duplicated PTY slave fds: stdin={}, stdout={}, stderr={}",
+            stdin_fd,
+            stdout_fd,
+            stderr_fd
         );
 
         let child = cmd.spawn().map_err(|e| {
