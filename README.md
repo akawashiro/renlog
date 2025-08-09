@@ -129,7 +129,13 @@ Based on research of the zenlog codebase, this document outlines the core archit
 - [ ] Basic PTY creation and management
 - [ ] Child process spawning
 - [ ] Simple I/O forwarding
-- [ ] Signal handling framework
+- [ ] FIFO pipe creation for communication
+
+#### Phase 1.5: Signal Handling
+- [ ] Signal handling framework (SIGCHLD, SIGWINCH, SIGHUP, SIGUSR2)
+- [ ] Terminal resize propagation
+- [ ] Child process cleanup
+- [ ] Emergency shell fallback
 
 #### Phase 2: Log File System
 - [ ] Directory structure creation
