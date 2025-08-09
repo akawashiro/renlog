@@ -48,10 +48,6 @@ pub fn strip_ansi_codes(input: &[u8]) -> Vec<u8> {
     cleaned.into_owned().into_bytes()
 }
 
-pub fn strip_ansi_codes_str(input: &str) -> String {
-    let regex = get_ansi_regex();
-    regex.replace_all(input, "").into_owned()
-}
 
 #[cfg(test)]
 mod tests {

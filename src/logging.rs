@@ -141,18 +141,3 @@ fn init_null_logging() -> Result<()> {
     Ok(())
 }
 
-pub fn is_logging_enabled() -> bool {
-    LOGGING_ENABLED.load(Ordering::Relaxed)
-}
-
-pub fn log_function_entry(function_name: &str) {
-    log::debug!("Entering function: {}", function_name);
-}
-
-pub fn log_function_exit(function_name: &str) {
-    log::debug!("Exiting function: {}", function_name);
-}
-
-pub fn log_error_with_context(error: &dyn std::error::Error, context: &str) {
-    log::error!("{}: {}", context, error);
-}

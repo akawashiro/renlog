@@ -120,8 +120,4 @@ impl CommandLogger {
         log::debug!("Current command log file closed");
     }
 
-    pub fn has_active_command(&self) -> bool {
-        let current_file = self.current_log_file.lock().unwrap();
-        current_file.is_some()
-    }
 }

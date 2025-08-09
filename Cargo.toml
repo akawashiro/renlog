@@ -3,6 +3,9 @@ name = "renlog"
 version = "0.1.0"
 edition = "2021"
 
+[lints.rust]
+warnings = "deny"
+
 [dependencies]
 tokio = { version = "1.0", features = ["full"] }
 nix = { version = "0.29", features = ["term", "fs"] }

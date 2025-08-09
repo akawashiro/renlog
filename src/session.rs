@@ -269,9 +269,6 @@ impl Session {
         }
     }
 
-    pub fn command_logger(&self) -> &CommandLogger {
-        &self.command_logger
-    }
 }
 
 impl Drop for Session {
