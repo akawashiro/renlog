@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 static LOGGING_ENABLED: AtomicBool = AtomicBool::new(false);
 
-pub fn init_logging(log_file: Option<&str>, log_level: &str) -> Result<()> {
+pub fn init_logging(log_file: &str, log_level: &str) -> Result<()> {
     let level_filter = match LevelFilter::from_str(log_level) {
         Ok(level) => level,
         Err(_) => {
@@ -18,24 +18,18 @@ pub fn init_logging(log_file: Option<&str>, log_level: &str) -> Result<()> {
         }
     };
 
-    match log_file {
-        Some(file_path) => match init_file_logging(file_path, level_filter) {
-            Ok(()) => {
-                LOGGING_ENABLED.store(true, Ordering::Relaxed);
-                log::info!("Renlog internal logging initialized to file: {}", file_path);
-                Ok(())
-            }
-            Err(e) => {
-                eprintln!(
-                    "Warning: Failed to initialize file logging to '{}': {}",
-                    file_path, e
-                );
-                eprintln!("Continuing without logging...");
-                init_null_logging()?;
-                Ok(())
-            }
-        },
-        None => {
+    match init_file_logging(log_file, level_filter) {
+        Ok(()) => {
+            LOGGING_ENABLED.store(true, Ordering::Relaxed);
+            log::info!("Renlog internal logging initialized to file: {}", log_file);
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!(
+                "Warning: Failed to initialize file logging to '{}': {}",
+                log_file, e
+            );
+            eprintln!("Continuing without logging...");
             init_null_logging()?;
             Ok(())
         }

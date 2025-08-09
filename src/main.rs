@@ -9,6 +9,7 @@ mod session;
 use clap::Parser;
 use session::Session;
 use std::io::Result;
+use std::path::Path;
 
 #[derive(Parser)]
 #[command(name = "renlog")]
@@ -19,9 +20,6 @@ use std::io::Result;
 struct Args {
     #[arg(long, help = "Directory path for renlog log files (mandatory)")]
     renlog_log_dir: String,
-
-    #[arg(long, help = "Path to log file for renlog debugging")]
-    log_file: Option<String>,
 
     #[arg(
         long,
@@ -35,8 +33,12 @@ struct Args {
 async fn main() -> Result<()> {
     let args = Args::parse();
 
+    // Construct the log file path in the renlog log directory
+    let log_file_path = Path::new(&args.renlog_log_dir).join("renlog.log");
+    let log_file_str = log_file_path.to_string_lossy();
+
     // Initialize logging system first
-    logging::init_logging(args.log_file.as_deref(), &args.log_level)?;
+    logging::init_logging(&log_file_str, &args.log_level)?;
 
     log::info!("Starting Renlog (Rust implementation of zenlog)...");
     println!("Starting Renlog (Rust implementation of zenlog)...");
