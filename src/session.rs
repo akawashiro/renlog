@@ -1,4 +1,4 @@
-use crate::command_logger::CommandLogger;
+use crate::command_logger;
 use crate::fifo::FifoPair;
 use crate::io_forward::{forward_with_command_detection, unified_pty_reader};
 use crate::pty::{restore_termios, set_raw_mode, PtyPair};
@@ -19,7 +19,6 @@ pub struct Session {
     original_termios: Option<Termios>,
     pid: u32,
     renlog_dir: String,
-    command_logger: CommandLogger,
 }
 
 impl Session {
@@ -75,8 +74,8 @@ impl Session {
 
         println!("Renlog starting... [PID={pid}]");
 
-        log::debug!("Creating CommandLogger");
-        let command_logger = CommandLogger::new(renlog_dir, pid)?;
+        log::debug!("Ensuring command log directory exists");
+        command_logger::ensure_log_directory(renlog_dir)?;
 
         log::info!("Session instance created successfully");
         Ok(Session {
@@ -86,7 +85,6 @@ impl Session {
             original_termios,
             pid,
             renlog_dir: renlog_dir.to_string(),
-            command_logger,
         })
     }
 
@@ -203,8 +201,9 @@ impl Session {
         let master_for_output = unsafe { File::from_raw_fd(master_dup2) };
         let forward_pipe_clone = unsafe { File::from_raw_fd(forward_dup) };
 
-        // Clone command logger for the output thread
-        let command_logger_for_output = self.command_logger.clone();
+        // Clone necessary data for the output thread
+        let renlog_dir_for_output = self.renlog_dir.clone();
+        let pid_for_output = self.pid;
 
         // Forward stdin to PTY master with command detection
         log::debug!("Starting stdin->master forwarder thread with command detection");
@@ -225,7 +224,8 @@ impl Session {
                 master_for_output,
                 stdout,
                 forward_pipe_clone,
-                &command_logger_for_output,
+                &renlog_dir_for_output,
+                pid_for_output,
             ) {
                 log::error!("Error in unified PTY reader: {}", e);
                 eprintln!("Error in unified PTY reader: {e}");

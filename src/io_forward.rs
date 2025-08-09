@@ -1,4 +1,4 @@
-use crate::command_logger::CommandLogger;
+use crate::command_logger;
 use crate::command_markers::{self, END_COMMAND_NAME, START_COMMAND_NAME};
 use std::fs::File;
 use std::io::{self, Read, Result, Write};
@@ -115,7 +115,8 @@ pub fn unified_pty_reader(
     mut input: File,
     mut stdout: File,
     mut forward_pipe: File,
-    command_logger: &CommandLogger,
+    log_dir: &str,
+    pid: u32,
 ) -> Result<()> {
     log::debug!("Starting unified PTY reader with command detection and buffering");
     let mut buffer = [0u8; BUFFER_SIZE];
@@ -141,8 +142,13 @@ pub fn unified_pty_reader(
                 if !command_buffer.is_empty() {
                     if let Some(ref cmd) = current_command {
                         log::info!("Saving incomplete command buffer for: {}", cmd);
-                        if let Err(e) = command_logger.save_command_log(cmd, &command_buffer, None)
-                        {
+                        if let Err(e) = command_logger::save_command_log(
+                            log_dir,
+                            pid,
+                            cmd,
+                            &command_buffer,
+                            None,
+                        ) {
                             log::error!("Failed to save incomplete command log: {}", e);
                         }
                     }
@@ -200,22 +206,31 @@ pub fn unified_pty_reader(
 
                 // Look for plain text command markers
                 let data_str = String::from_utf8_lossy(&data_buffer);
-                log::trace!("unified_pty_reader: checking buffer for markers, buffer size: {}", data_buffer.len());
-                
+                log::trace!(
+                    "unified_pty_reader: checking buffer for markers, buffer size: {}",
+                    data_buffer.len()
+                );
+
                 // Look for start command marker
                 if let Some(start_pos) = data_str.find(START_COMMAND_NAME) {
                     if let Some(newline_pos) = data_str[start_pos..].find('\n') {
                         let full_line = &data_str[start_pos..start_pos + newline_pos];
                         let parts: Vec<&str> = full_line.split_whitespace().collect();
-                        
+
                         // Save previous command if exists
                         if let Some(ref prev_cmd) = current_command {
                             log::info!("Saving previous command log: {}", prev_cmd);
-                            if let Err(e) = command_logger.save_command_log(prev_cmd, &command_buffer, None) {
+                            if let Err(e) = command_logger::save_command_log(
+                                log_dir,
+                                pid,
+                                prev_cmd,
+                                &command_buffer,
+                                None,
+                            ) {
                                 log::error!("Failed to save previous command log: {}", e);
                             }
                         }
-                        
+
                         // Start new command
                         let command_str = if parts.len() > 1 {
                             parts[1..].join(" ")
@@ -225,7 +240,7 @@ pub fn unified_pty_reader(
                         log::info!("Starting new command buffer for: {}", command_str);
                         current_command = Some(command_str);
                         command_buffer.clear();
-                        
+
                         // Remove processed part from buffer
                         let bytes_processed = start_pos + newline_pos + 1;
                         if bytes_processed < data_buffer.len() {
@@ -236,29 +251,39 @@ pub fn unified_pty_reader(
                         continue;
                     }
                 }
-                
+
                 // Look for end command marker
                 if let Some(end_pos) = data_str.find(END_COMMAND_NAME) {
                     if let Some(newline_pos) = data_str[end_pos..].find('\n') {
                         let full_line = &data_str[end_pos..end_pos + newline_pos];
                         let parts: Vec<&str> = full_line.split_whitespace().collect();
-                        
+
                         let exit_status = if parts.len() > 1 {
                             parts[1].parse::<i32>().ok()
                         } else {
                             None
                         };
-                        
+
                         if let Some(ref cmd) = current_command {
-                            log::info!("Ending command '{}' with exit status: {:?}", cmd, exit_status);
-                            if let Err(e) = command_logger.save_command_log(cmd, &command_buffer, exit_status) {
+                            log::info!(
+                                "Ending command '{}' with exit status: {:?}",
+                                cmd,
+                                exit_status
+                            );
+                            if let Err(e) = command_logger::save_command_log(
+                                log_dir,
+                                pid,
+                                cmd,
+                                &command_buffer,
+                                exit_status,
+                            ) {
                                 log::error!("Failed to save command log: {}", e);
                             }
                         }
-                        
+
                         current_command = None;
                         command_buffer.clear();
-                        
+
                         // Remove processed part from buffer
                         let bytes_processed = end_pos + newline_pos + 1;
                         if bytes_processed < data_buffer.len() {
@@ -269,7 +294,7 @@ pub fn unified_pty_reader(
                         continue;
                     }
                 }
-                
+
                 // Keep buffer size manageable - keep only last 1KB for marker detection
                 if data_buffer.len() > 1024 {
                     data_buffer = data_buffer[(data_buffer.len() - 1024)..].to_vec();
