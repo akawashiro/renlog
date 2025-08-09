@@ -77,7 +77,7 @@ impl Session {
 
         log::debug!("Creating CommandLogger");
         let command_logger = CommandLogger::new(renlog_log_dir, pid)?;
-        
+
         // Start with an initial command log to capture session startup
         log::debug!("Starting initial command log file");
         if let Err(e) = command_logger.start_new_command() {
@@ -219,7 +219,9 @@ impl Session {
         log::debug!("Starting stdin->master forwarder thread with command detection");
         thread::spawn(move || {
             log::debug!("Command-aware stdin forwarder thread started");
-            if let Err(e) = forward_with_command_detection(stdin, stdin_master, &command_logger_for_input) {
+            if let Err(e) =
+                forward_with_command_detection(stdin, stdin_master, &command_logger_for_input)
+            {
                 log::error!("Error in command-aware stdin forwarding: {}", e);
                 eprintln!("Error in command-aware stdin forwarding: {e}");
             }
@@ -230,7 +232,12 @@ impl Session {
         log::debug!("Starting master->stdout+pipe+cmdlog tee thread");
         thread::spawn(move || {
             log::debug!("Command-aware tee forwarder thread started");
-            if let Err(e) = tee_with_command_logging(master_for_output, stdout, forward_pipe_clone, &command_logger_for_output) {
+            if let Err(e) = tee_with_command_logging(
+                master_for_output,
+                stdout,
+                forward_pipe_clone,
+                &command_logger_for_output,
+            ) {
                 log::error!("Error in command-aware tee forwarding: {}", e);
                 eprintln!("Error in command-aware tee forwarding: {e}");
             }
@@ -261,7 +268,7 @@ impl Session {
             Ok(0)
         }
     }
-    
+
     pub fn command_logger(&self) -> &CommandLogger {
         &self.command_logger
     }

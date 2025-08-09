@@ -149,7 +149,7 @@ pub fn forward_with_command_detection(
     let mut buffer = [0u8; BUFFER_SIZE];
     let mut total_bytes_forwarded = 0u64;
     let mut line_buffer = Vec::new();
-    
+
     loop {
         match input.read(&mut buffer) {
             Ok(0) => {
@@ -162,34 +162,35 @@ pub fn forward_with_command_detection(
             Ok(n) => {
                 log::trace!("forward_with_command_detection: read {} bytes", n);
                 let data = &buffer[..n];
-                
+
                 // Write data to output immediately
                 output.write_all(data)?;
                 output.flush()?;
-                
+
                 // Process data byte by byte to detect newlines (commands)
                 for &byte in data {
                     line_buffer.push(byte);
-                    
+
                     // On newline, we consider this a new command
                     if byte == b'\n' {
                         // Skip empty lines
-                        let line_content: Vec<u8> = line_buffer.iter()
+                        let line_content: Vec<u8> = line_buffer
+                            .iter()
                             .filter(|&&b| b != b'\r' && b != b'\n')
                             .copied()
                             .collect();
-                            
+
                         if !line_content.is_empty() {
                             log::debug!("Detected new command, creating new log file");
                             if let Err(e) = command_logger.start_new_command() {
                                 log::error!("Failed to start new command log: {}", e);
                             }
                         }
-                        
+
                         line_buffer.clear();
                     }
                 }
-                
+
                 total_bytes_forwarded += n as u64;
                 if total_bytes_forwarded % (1024 * 1024) == 0 {
                     log::debug!(
@@ -212,7 +213,7 @@ pub fn forward_with_command_detection(
             }
         }
     }
-    
+
     log::info!(
         "forward_with_command_detection completed: {} bytes forwarded",
         total_bytes_forwarded
@@ -280,7 +281,7 @@ pub fn tee_with_command_logging(
                         e
                     );
                 }
-                
+
                 // Log to command-specific file if we have an active command
                 if let Err(e) = command_logger.log_command_output(data) {
                     log::warn!("Failed to log command output: {}", e);
@@ -288,7 +289,10 @@ pub fn tee_with_command_logging(
 
                 total_bytes_teed += n as u64;
                 if total_bytes_teed % (1024 * 1024) == 0 {
-                    log::debug!("tee_with_command_logging: teed {} MB", total_bytes_teed / (1024 * 1024));
+                    log::debug!(
+                        "tee_with_command_logging: teed {} MB",
+                        total_bytes_teed / (1024 * 1024)
+                    );
                 }
             }
             Err(e) => {
@@ -305,7 +309,7 @@ pub fn tee_with_command_logging(
             }
         }
     }
-    
+
     log::info!(
         "tee_with_command_logging completed: {} bytes teed, {} output1 errors, {} output2 errors",
         total_bytes_teed,

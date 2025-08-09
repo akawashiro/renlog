@@ -1,3 +1,4 @@
+mod ansi_filter;
 mod command_logger;
 mod fifo;
 mod io_forward;
