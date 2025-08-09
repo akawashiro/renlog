@@ -6,6 +6,7 @@ mod logging;
 mod pty;
 mod session;
 
+use chrono::Utc;
 use clap::Parser;
 use session::Session;
 use std::io::Result;
@@ -34,7 +35,10 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     // Construct the log file path in the renlog log directory
-    let log_file_path = Path::new(&args.renlog_dir).join("renlog.log");
+    let pid = std::process::id();
+    let timestamp = Utc::now().format("%Y%m%d_%H%M%S_%3f").to_string();
+    let log_filename = format!("renlog_{}_{}.log", timestamp, pid);
+    let log_file_path = Path::new(&args.renlog_dir).join(log_filename);
     let log_file_str = log_file_path.to_string_lossy();
 
     // Initialize logging system first
