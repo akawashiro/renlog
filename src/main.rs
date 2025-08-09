@@ -22,10 +22,7 @@ use std::os::unix::fs;
 )]
 struct Args {
     #[command(subcommand)]
-    command: Option<Commands>,
-
-    #[arg(long, help = "Directory path for renlog log files (mandatory when using log command)")]
-    renlog_dir: Option<String>,
+    command: Commands,
 
     #[arg(
         long,
@@ -37,9 +34,9 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Run renlog session (default behavior)
+    /// Run renlog session
     Log {
-        #[arg(long, help = "Directory path for renlog log files (mandatory)")]
+        #[arg(long, help = "Directory path for renlog log files")]
         renlog_dir: String,
     },
     /// Show zsh configuration for shell integration
@@ -69,22 +66,12 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     match args.command {
-        Some(Commands::ShowZshRc) => {
+        Commands::ShowZshRc => {
             show_zsh_rc();
             Ok(())
         }
-        Some(Commands::Log { renlog_dir }) => {
+        Commands::Log { renlog_dir } => {
             run_log_session(&renlog_dir, &args.log_level).await
-        }
-        None => {
-            // Default behavior - require renlog_dir and run log session
-            if let Some(renlog_dir) = args.renlog_dir {
-                run_log_session(&renlog_dir, &args.log_level).await
-            } else {
-                eprintln!("Error: --renlog-dir is required when not using a subcommand");
-                eprintln!("Usage: renlog --renlog-dir <DIR> or renlog log --renlog-dir <DIR>");
-                std::process::exit(1);
-            }
         }
     }
 }
