@@ -123,66 +123,6 @@ Based on research of the zenlog codebase, this document outlines the core archit
 
 ### Required Crates
 
-```toml
-[dependencies]
-# PTY handling
-nix = "0.27"           # Unix system calls and PTY creation
-libc = "0.2"           # Low-level system interfaces
-
-# Terminal handling
-termios = "0.3"        # Terminal I/O control
-crossterm = "0.27"     # Cross-platform terminal manipulation
-
-# Configuration
-toml = "0.8"           # TOML file parsing
-serde = { version = "1.0", features = ["derive"] }
-
-# Async runtime (for signal handling and I/O)
-tokio = { version = "1", features = ["full"] }
-
-# Error handling
-anyhow = "1.0"         # Error handling
-thiserror = "1.0"      # Error derivation
-
-# Path and filesystem
-home = "0.5"           # Home directory detection
-chrono = "0.4"         # Timestamps and date handling
-
-# Command parsing
-regex = "1.10"         # Regular expressions
-shell-words = "1.1"    # Shell command parsing
-```
-
-### Module Structure
-
-```
-src/
-├── main.rs              # Entry point and subcommand routing
-├── logger/
-│   ├── mod.rs          # Logger trait and implementation
-│   ├── session.rs      # Session management
-│   ├── pty.rs          # PTY creation and management
-│   └── tee.rs          # I/O forwarding and tee implementation
-├── config/
-│   ├── mod.rs          # Configuration structures
-│   └── loader.rs       # TOML loading and env override
-├── logfiles/
-│   ├── mod.rs          # Log file management
-│   ├── generator.rs    # Log file creation and symlinks
-│   └── parser.rs       # Command line parsing
-├── builtins/
-│   ├── mod.rs          # Built-in command registry
-│   ├── history.rs      # History commands
-│   └── session.rs      # Session control commands
-├── shell/
-│   ├── mod.rs          # Shell integration
-│   ├── bash.rs         # Bash-specific setup
-│   └── zsh.rs          # Zsh-specific setup
-└── utils/
-    ├── mod.rs          # Utility functions
-    └── signals.rs      # Signal handling
-```
-
 ### Implementation Phases
 
 #### Phase 1: Core Logger
