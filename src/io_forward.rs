@@ -44,8 +44,8 @@ pub fn forward_with_command_detection(
 
                     // Process the command
                     if !args.is_empty() {
-                        if args[0] == "end-command" {
-                            // Handle end-command marker
+                        if args[0] == "renlog-end-command" {
+                            // Handle renlog-end-command marker
                             let exit_status = if args.len() > 1 {
                                 args[1].parse::<i32>().ok()
                             } else {
@@ -53,10 +53,16 @@ pub fn forward_with_command_detection(
                             };
                             log::info!("Ending command with exit status: {:?}", exit_status);
                             command_logger.end_command(exit_status);
-                        } else {
-                            // Handle regular command start marker
-                            log::info!("Starting new command log for: {}", args.join(" "));
-                            if let Err(e) = command_logger.start_new_command() {
+                        } else if args[0] == "renlog-start-command" {
+                            // Handle renlog-start-command marker
+                            let command_str = if args.len() > 1 {
+                                args[1..].join(" ")
+                            } else {
+                                "unknown".to_string()
+                            };
+                            log::info!("Starting new command log for: {}", command_str);
+                            if let Err(e) = command_logger.start_new_command_with_info(&command_str)
+                            {
                                 log::error!("Failed to start new command log: {}", e);
                             }
                         }

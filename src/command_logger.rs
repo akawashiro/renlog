@@ -5,6 +5,25 @@ use std::os::unix::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+fn sanitize_for_filename(command: &str) -> String {
+    // Take first 50 characters and replace problematic characters
+    let truncated = if command.len() > 50 {
+        &command[..50]
+    } else {
+        command
+    };
+
+    truncated
+        .chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\n' | '\r' | '\t' => '_',
+            ' ' => '-',
+            c if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' => c,
+            _ => '_',
+        })
+        .collect()
+}
+
 #[derive(Clone)]
 pub struct CommandLogger {
     log_dir: String,
@@ -64,15 +83,29 @@ impl CommandLogger {
     }
 
     pub fn start_new_command(&self) -> Result<()> {
-        log::debug!("Starting new command, creating new log file");
+        self.start_new_command_with_info("unknown")
+    }
+
+    pub fn start_new_command_with_info(&self, command: &str) -> Result<()> {
+        log::debug!(
+            "Starting new command, creating new log file for: {}",
+            command
+        );
 
         let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S_%3f").to_string();
-        let filename = format!("{}_{}.log", timestamp, self.pid);
+
+        // Create a safe filename from command (limit length and sanitize)
+        let safe_command = sanitize_for_filename(command);
+        let filename = format!("{}_{}_cmd_{}.log", timestamp, self.pid, safe_command);
         let filepath = PathBuf::from(&self.log_dir).join(&filename);
 
-        log::info!("Creating new command log file: {}", filepath.display());
+        log::info!(
+            "Creating new command log file: {} for command: {}",
+            filepath.display(),
+            command
+        );
 
-        let file = File::create(&filepath).map_err(|e| {
+        let mut file = File::create(&filepath).map_err(|e| {
             log::error!(
                 "Failed to create command log file '{}': {}",
                 filepath.display(),
@@ -84,6 +117,20 @@ impl CommandLogger {
                 e
             ))
         })?;
+
+        // Write command metadata header
+        let header = format!(
+            "# Renlog Command Log\n# Command: {}\n# Started: {}\n# PID: {}\n\n",
+            command,
+            chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC"),
+            self.pid
+        );
+
+        if let Err(e) = file.write_all(header.as_bytes()) {
+            log::warn!("Failed to write header to command log: {}", e);
+        } else if let Err(e) = file.flush() {
+            log::warn!("Failed to flush header to command log: {}", e);
+        }
 
         let mut current_file = self.current_log_file.lock().unwrap();
         *current_file = Some(file);
