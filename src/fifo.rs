@@ -1,4 +1,3 @@
-use libc;
 use nix::fcntl::{open, OFlag};
 use nix::sys::stat::Mode;
 use std::fs::{remove_file, File};
@@ -15,8 +14,8 @@ pub struct FifoPair {
 
 impl FifoPair {
     pub fn new(temp_dir: &str, pid: u32) -> Result<Self> {
-        let forward_path = PathBuf::from(format!("{}/renlog.{}.f.pipe", temp_dir, pid));
-        let reverse_path = PathBuf::from(format!("{}/renlog.{}.r.pipe", temp_dir, pid));
+        let forward_path = PathBuf::from(format!("{temp_dir}/renlog.{pid}.f.pipe"));
+        let reverse_path = PathBuf::from(format!("{temp_dir}/renlog.{pid}.r.pipe"));
 
         // Remove existing pipes if they exist
         let _ = remove_file(&forward_path);
@@ -45,19 +44,11 @@ impl FifoPair {
 
     pub fn open(&mut self) -> Result<()> {
         // Open the forward pipe for reading/writing (non-blocking for now)
-        let forward_fd = open(&self.forward_path, OFlag::O_RDWR, Mode::empty()).map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                format!("Failed to open forward FIFO: {}", e),
-            )
-        })?;
+        let forward_fd = open(&self.forward_path, OFlag::O_RDWR, Mode::empty())
+            .map_err(|e| io::Error::other(format!("Failed to open forward FIFO: {e}")))?;
 
-        let reverse_fd = open(&self.reverse_path, OFlag::O_RDWR, Mode::empty()).map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                format!("Failed to open reverse FIFO: {}", e),
-            )
-        })?;
+        let reverse_fd = open(&self.reverse_path, OFlag::O_RDWR, Mode::empty())
+            .map_err(|e| io::Error::other(format!("Failed to open reverse FIFO: {e}")))?;
 
         self.forward_file = Some(unsafe { File::from_raw_fd(forward_fd) });
         self.reverse_file = Some(unsafe { File::from_raw_fd(reverse_fd) });

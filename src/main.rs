@@ -10,7 +10,9 @@ use std::io::Result;
 #[derive(Parser)]
 #[command(name = "renlog")]
 #[command(about = "Rust implementation of zenlog")]
-#[command(long_about = "Renlog - Rust implementation of zenlog\nPhase 1 implementation - basic PTY and I/O forwarding")]
+#[command(
+    long_about = "Renlog - Rust implementation of zenlog\nPhase 1 implementation - basic PTY and I/O forwarding"
+)]
 struct Args {}
 
 #[tokio::main]
@@ -34,7 +36,6 @@ async fn main() -> Result<()> {
     // For now, just run the logger loop and wait for child
     let exit_code = logger.wait_for_child()?;
 
-    println!("Renlog session ended with exit code: {}", exit_code);
+    println!("Renlog session ended with exit code: {exit_code}");
     Ok(())
 }
-

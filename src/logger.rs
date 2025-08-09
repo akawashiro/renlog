@@ -3,9 +3,10 @@ use crate::io_forward::{forward_simple, tee_simple};
 use crate::pty::{restore_termios, set_raw_mode, PtyPair};
 
 use nix::sys::termios::Termios;
+use nix::unistd;
 use std::env;
 use std::fs::File;
-use std::io::{self, BufRead, BufReader, Result};
+use std::io::{self, Result};
 use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::process::{Child, Command, Stdio};
 use std::thread;
@@ -15,7 +16,6 @@ pub struct Logger {
     fifos: FifoPair,
     child: Option<Child>,
     original_termios: Option<Termios>,
-    temp_dir: String,
     pid: u32,
 }
 
@@ -29,21 +29,16 @@ impl Logger {
         fifos.open()?;
 
         // Set stdin to raw mode
-        let original_termios = set_raw_mode(libc::STDIN_FILENO).map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                format!("Failed to set raw mode: {}", e),
-            )
-        })?;
+        let original_termios = set_raw_mode(libc::STDIN_FILENO)
+            .map_err(|e| io::Error::other(format!("Failed to set raw mode: {e}")))?;
 
-        println!("Renlog starting... [PID={}]", pid);
+        println!("Renlog starting... [PID={pid}]");
 
         Ok(Logger {
             pty,
             fifos,
             child: None,
             original_termios: Some(original_termios),
-            temp_dir,
             pid,
         })
     }
@@ -75,71 +70,49 @@ impl Logger {
     }
 
     pub fn start_forwarders(&self) -> Result<()> {
-        // Get file handles for I/O forwarding
-        let stdin = unsafe { File::from_raw_fd(libc::STDIN_FILENO) };
-        let stdout = unsafe { File::from_raw_fd(libc::STDOUT_FILENO) };
-        let _master_for_input = unsafe { File::from_raw_fd(self.pty.master_fd()) };
-        let master_for_output = unsafe { File::from_raw_fd(self.pty.master_fd()) };
-
-        // We need the forward pipe for tee functionality
-        let forward_pipe = self
+        // Get raw file descriptors
+        let stdin_fd = libc::STDIN_FILENO;
+        let stdout_fd = libc::STDOUT_FILENO;
+        let master_fd = self.pty.master_fd();
+        let forward_pipe_fd = self
             .fifos
             .forward_file
             .as_ref()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Forward pipe not opened"))?;
+            .ok_or_else(|| io::Error::other("Forward pipe not opened"))?
+            .as_raw_fd();
 
-        // Clone file descriptors for threading
-        let forward_pipe_fd = forward_pipe.as_raw_fd();
-        let forward_pipe_clone = unsafe { File::from_raw_fd(forward_pipe_fd) };
+        // Create separate owned file descriptors by duplicating them
+        let stdin_dup = unistd::dup(stdin_fd)
+            .map_err(|e| io::Error::other(format!("Failed to dup stdin: {e}")))?;
+        let stdout_dup = unistd::dup(stdout_fd)
+            .map_err(|e| io::Error::other(format!("Failed to dup stdout: {e}")))?;
+        let master_dup1 = unistd::dup(master_fd)
+            .map_err(|e| io::Error::other(format!("Failed to dup master1: {e}")))?;
+        let master_dup2 = unistd::dup(master_fd)
+            .map_err(|e| io::Error::other(format!("Failed to dup master2: {e}")))?;
+        let forward_dup = unistd::dup(forward_pipe_fd)
+            .map_err(|e| io::Error::other(format!("Failed to dup forward pipe: {e}")))?;
+
+        // Create File instances from the duplicated descriptors
+        let stdin = unsafe { File::from_raw_fd(stdin_dup) };
+        let stdout = unsafe { File::from_raw_fd(stdout_dup) };
+        let stdin_master = unsafe { File::from_raw_fd(master_dup1) };
+        let master_for_output = unsafe { File::from_raw_fd(master_dup2) };
+        let forward_pipe_clone = unsafe { File::from_raw_fd(forward_dup) };
 
         // Forward stdin to PTY master
-        let stdin_master = unsafe { File::from_raw_fd(self.pty.master_fd()) };
         thread::spawn(move || {
             if let Err(e) = forward_simple(stdin, stdin_master) {
-                eprintln!("Error in stdin forwarding: {}", e);
+                eprintln!("Error in stdin forwarding: {e}");
             }
         });
 
         // Tee PTY master output to both stdout and forward pipe
         thread::spawn(move || {
             if let Err(e) = tee_simple(master_for_output, stdout, forward_pipe_clone) {
-                eprintln!("Error in tee forwarding: {}", e);
+                eprintln!("Error in tee forwarding: {e}");
             }
         });
-
-        Ok(())
-    }
-
-    pub fn run_logger_loop(&self) -> Result<()> {
-        // Simple logger loop that reads from the forward pipe
-        let forward_file = self
-            .fifos
-            .forward_file
-            .as_ref()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Forward pipe not opened"))?;
-
-        let reader = BufReader::new(forward_file);
-
-        println!("Logger loop started, reading from pipe...");
-
-        for line in reader.lines() {
-            match line {
-                Ok(content) => {
-                    // For Phase 1, just echo what we receive from the pipe
-                    println!("[LOG] {}", content);
-
-                    // Check for special commands (simplified for Phase 1)
-                    if content.trim() == "exit" {
-                        println!("Exit command received, shutting down...");
-                        break;
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Error reading from pipe: {}", e);
-                    break;
-                }
-            }
-        }
 
         Ok(())
     }
@@ -149,7 +122,7 @@ impl Logger {
             match child.wait() {
                 Ok(status) => {
                     let exit_code = status.code().unwrap_or(-1);
-                    println!("Child process exited with code: {}", exit_code);
+                    println!("Child process exited with code: {exit_code}");
                     Ok(exit_code)
                 }
                 Err(e) => Err(e),
