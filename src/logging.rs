@@ -58,7 +58,7 @@ impl Log for GlogLogger {
             };
             
             let formatted = format!(
-                "[{}]{} {}{}] {}\n",
+                "{}{} {}{}] {}\n",
                 level_char,
                 timestamp,
                 pid,

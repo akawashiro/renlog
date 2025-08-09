@@ -1,0 +1,15 @@
+I20250809 06:35:44.495884 3260341 logging.rs:104] Renlog internal logging initialized to file: ./renlog_20250809_063544_495_3260341.log
+I20250809 06:35:44.495902 3260341 main.rs:47] Starting Renlog (Rust implementation of zenlog)...
+I20250809 06:35:44.495913 3260341 session.rs:29] Session initializing with PID=3260341 renlog_dir=.
+I20250809 06:35:44.495979 3260341 pty.rs:31] PTY pair created successfully: master_fd=10, slave_fd=11
+I20250809 06:35:44.496014 3260341 fifo.rs:71] FIFO pair created successfully: forward=./renlog.3260341.f.pipe, reverse=./renlog.3260341.r.pipe
+I20250809 06:35:44.496030 3260341 fifo.rs:111] FIFO pair opened successfully: forward_fd=12, reverse_fd=13
+I20250809 06:35:44.496035 3260341 session.rs:54] FIFO pipes created and opened: forward=./renlog.3260341.f.pipe, reverse=./renlog.3260341.r.pipe
+I20250809 06:35:44.496041 3260341 session.rs:69] Stdin is not a TTY, skipping raw mode setup
+I20250809 06:35:44.496052 3260341 command_logger.rs:34] CommandLogger created for directory: .
+I20250809 06:35:44.496061 3260341 command_logger.rs:49] Creating new command log file: ./20250809_063544_496_3260341.log
+I20250809 06:35:44.496080 3260341 session.rs:87] Session instance created successfully
+I20250809 06:35:44.496088 3260341 session.rs:103] Using shell: /usr/bin/zsh
+I20250809 06:35:44.496281 3260341 session.rs:154] Child process started with PID: 3260374
+I20250809 06:35:44.496364 3260341 session.rs:247] I/O forwarders started successfully
+I20250809 06:35:44.496434 3260341 io_forward.rs:217] forward_with_command_detection completed: 0 bytes forwarded

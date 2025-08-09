@@ -1,0 +1,8 @@
+[zplug] Loaded from cache (/home/akira/.zplug/cache)
+ Load "~/.zplug/repos/rupa/z/z.sh" (rupa/z)
+[zplug] Run compinit
+ Load "~/.zplug/repos/zsh-users/zsh-syntax-highlighting/zsh-syntax-highlighting.plugin.zsh" (zsh-users/zsh-syntax-highlighting)
+Setup ssh-agent with gpg-agent because I found the gpg key.
+gpg-agent: a gpg-agent is already running - not starting a new one
+%                                                                                [@masumi](main)~/ghq/github.com/akawashiro/renlog
+$ [?1h[?2004h
