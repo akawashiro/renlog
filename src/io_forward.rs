@@ -5,59 +5,135 @@ const BUFFER_SIZE: usize = 32 * 1024;
 
 // Simple synchronous forwarding from input to output
 pub fn forward_simple(mut input: File, mut output: File) -> Result<()> {
+    log::debug!("Starting forward_simple I/O forwarding");
     let mut buffer = [0u8; BUFFER_SIZE];
+    let mut total_bytes_forwarded = 0u64;
 
     loop {
         match input.read(&mut buffer) {
-            Ok(0) => break, // EOF
+            Ok(0) => {
+                log::debug!(
+                    "forward_simple: EOF reached, total bytes forwarded: {}",
+                    total_bytes_forwarded
+                );
+                break; // EOF
+            }
             Ok(n) => {
+                log::trace!("forward_simple: read {} bytes", n);
                 output.write_all(&buffer[..n])?;
                 output.flush()?;
+                total_bytes_forwarded += n as u64;
+                if total_bytes_forwarded % (1024 * 1024) == 0 {
+                    log::debug!(
+                        "forward_simple: forwarded {} MB",
+                        total_bytes_forwarded / (1024 * 1024)
+                    );
+                }
             }
             Err(e) => {
                 if e.kind() == io::ErrorKind::Interrupted {
+                    log::trace!("forward_simple: interrupted, continuing");
                     continue;
                 }
+                log::error!(
+                    "forward_simple: I/O error after {} bytes: {}",
+                    total_bytes_forwarded,
+                    e
+                );
                 return Err(e);
             }
         }
     }
+    log::info!(
+        "forward_simple completed: {} bytes forwarded",
+        total_bytes_forwarded
+    );
     Ok(())
 }
 
 // Tee functionality - read from input and write to both outputs
 pub fn tee_simple(mut input: File, mut output1: File, mut output2: File) -> Result<()> {
+    log::debug!("Starting tee_simple I/O forwarding (1 input -> 2 outputs)");
     let mut buffer = [0u8; BUFFER_SIZE];
+    let mut total_bytes_teed = 0u64;
+    let mut output1_errors = 0u32;
+    let mut output2_errors = 0u32;
 
     loop {
         match input.read(&mut buffer) {
-            Ok(0) => break, // EOF
+            Ok(0) => {
+                log::debug!("tee_simple: EOF reached, total bytes teed: {}, output1_errors: {}, output2_errors: {}", 
+                           total_bytes_teed, output1_errors, output2_errors);
+                break; // EOF
+            }
             Ok(n) => {
+                log::trace!("tee_simple: read {} bytes", n);
                 let data = &buffer[..n];
 
                 // Write to first output (typically stdout)
                 if let Err(e) = output1.write_all(data) {
+                    output1_errors += 1;
+                    log::warn!(
+                        "tee_simple: Failed to write to output1 (error #{}): {}",
+                        output1_errors,
+                        e
+                    );
                     eprintln!("Warning: Failed to write to output1: {e}");
                 }
                 if let Err(e) = output1.flush() {
+                    output1_errors += 1;
+                    log::warn!(
+                        "tee_simple: Failed to flush output1 (error #{}): {}",
+                        output1_errors,
+                        e
+                    );
                     eprintln!("Warning: Failed to flush output1: {e}");
                 }
 
                 // Write to second output (typically logger pipe)
                 if let Err(e) = output2.write_all(data) {
+                    output2_errors += 1;
+                    log::warn!(
+                        "tee_simple: Failed to write to output2 (error #{}): {}",
+                        output2_errors,
+                        e
+                    );
                     eprintln!("Warning: Failed to write to output2: {e}");
                 }
                 if let Err(e) = output2.flush() {
+                    output2_errors += 1;
+                    log::warn!(
+                        "tee_simple: Failed to flush output2 (error #{}): {}",
+                        output2_errors,
+                        e
+                    );
                     eprintln!("Warning: Failed to flush output2: {e}");
+                }
+
+                total_bytes_teed += n as u64;
+                if total_bytes_teed % (1024 * 1024) == 0 {
+                    log::debug!("tee_simple: teed {} MB", total_bytes_teed / (1024 * 1024));
                 }
             }
             Err(e) => {
                 if e.kind() == io::ErrorKind::Interrupted {
+                    log::trace!("tee_simple: interrupted, continuing");
                     continue;
                 }
+                log::error!(
+                    "tee_simple: I/O error after {} bytes: {}",
+                    total_bytes_teed,
+                    e
+                );
                 return Err(e);
             }
         }
     }
+    log::info!(
+        "tee_simple completed: {} bytes teed, {} output1 errors, {} output2 errors",
+        total_bytes_teed,
+        output1_errors,
+        output2_errors
+    );
     Ok(())
 }
