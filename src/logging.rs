@@ -1,5 +1,5 @@
 use log::LevelFilter;
-use simplelog::{Config, WriteLogger};
+use simplelog::{ConfigBuilder, WriteLogger};
 use std::io::{self, Result};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -52,7 +52,10 @@ fn init_file_logging(file_path: &str, level: LevelFilter) -> Result<()> {
         .open(file_path)
         .map_err(|e| io::Error::other(format!("Failed to create/open log file: {}", e)))?;
 
-    WriteLogger::init(level, Config::default(), file)
+    let config = ConfigBuilder::new()
+        .set_location_level(log::LevelFilter::Trace)
+        .build();
+    WriteLogger::init(level, config, file)
         .map_err(|e| io::Error::other(format!("Failed to initialize logger: {}", e)))?;
 
     Ok(())
