@@ -6,11 +6,7 @@ use std::io::{self, Read, Result, Write};
 const BUFFER_SIZE: usize = 32 * 1024;
 
 // Command-aware input forwarding with command marker detection
-pub fn forward_with_command_detection(
-    mut input: File,
-    mut output: File,
-    command_logger: &CommandLogger,
-) -> Result<()> {
+pub fn forward_with_command_detection(mut input: File, mut output: File) -> Result<()> {
     log::debug!("Starting command-aware input forwarding with marker detection");
     let mut buffer = [0u8; BUFFER_SIZE];
     let mut total_bytes_forwarded = 0u64;
@@ -42,29 +38,26 @@ pub fn forward_with_command_detection(
                 if success {
                     log::debug!("Detected command marker with args: {:?}", args);
 
-                    // Process the command
+                    // Process the command markers but don't do any logging
+                    // The unified_pty_reader handles all command logging
                     if !args.is_empty() {
                         if args[0] == END_COMMAND_NAME {
-                            // Handle renlog-end-command marker
                             let exit_status = if args.len() > 1 {
                                 args[1].parse::<i32>().ok()
                             } else {
                                 None
                             };
-                            log::info!("Ending command with exit status: {:?}", exit_status);
-                            command_logger.end_command(exit_status);
+                            log::info!(
+                                "Detected end command marker with exit status: {:?}",
+                                exit_status
+                            );
                         } else if args[0] == START_COMMAND_NAME {
-                            // Handle renlog-start-command marker
                             let command_str = if args.len() > 1 {
                                 args[1..].join(" ")
                             } else {
                                 "unknown".to_string()
                             };
-                            log::info!("Starting new command log for: {}", command_str);
-                            if let Err(e) = command_logger.start_new_command_with_info(&command_str)
-                            {
-                                log::error!("Failed to start new command log: {}", e);
-                            }
+                            log::info!("Detected start command marker for: {}", command_str);
                         }
                     }
 
@@ -117,88 +110,187 @@ pub fn forward_with_command_detection(
     Ok(())
 }
 
-// Command-aware tee functionality - read from input and write to outputs plus command log
-pub fn tee_with_command_logging(
+// Unified PTY reader that handles both output forwarding and command detection/logging
+pub fn unified_pty_reader(
     mut input: File,
-    mut output1: File,
-    mut output2: File,
+    mut stdout: File,
+    mut forward_pipe: File,
     command_logger: &CommandLogger,
 ) -> Result<()> {
-    log::debug!("Starting command-aware tee forwarding");
+    log::debug!("Starting unified PTY reader with command detection and buffering");
     let mut buffer = [0u8; BUFFER_SIZE];
-    let mut total_bytes_teed = 0u64;
-    let mut output1_errors = 0u32;
-    let mut output2_errors = 0u32;
+    let mut total_bytes_read = 0u64;
+    let mut stdout_errors = 0u32;
+    let mut forward_pipe_errors = 0u32;
+
+    // Buffer for marker detection
+    let mut data_buffer = Vec::new();
+    // Buffer for current command output
+    let mut command_buffer = Vec::new();
+    let mut current_command: Option<String> = None;
 
     loop {
         match input.read(&mut buffer) {
             Ok(0) => {
-                log::debug!("tee_with_command_logging: EOF reached, total bytes teed: {}, output1_errors: {}, output2_errors: {}", 
-                           total_bytes_teed, output1_errors, output2_errors);
-                command_logger.close_current_command();
-                break; // EOF
+                log::debug!(
+                    "unified_pty_reader: EOF reached, total bytes read: {}, stdout_errors: {}, forward_pipe_errors: {}",
+                    total_bytes_read, stdout_errors, forward_pipe_errors
+                );
+
+                // Save any remaining buffered command data
+                if !command_buffer.is_empty() {
+                    if let Some(ref cmd) = current_command {
+                        log::info!("Saving incomplete command buffer for: {}", cmd);
+                        if let Err(e) = command_logger.save_command_log(cmd, &command_buffer, None)
+                        {
+                            log::error!("Failed to save incomplete command log: {}", e);
+                        }
+                    }
+                }
+                break;
             }
             Ok(n) => {
-                log::trace!("tee_with_command_logging: read {} bytes", n);
+                log::trace!("unified_pty_reader: read {} bytes", n);
                 let data = &buffer[..n];
+                log::debug!("unified_pty_reader: processing {} bytes of data", n);
 
-                // Write to first output (typically stdout)
-                if let Err(e) = output1.write_all(data) {
-                    output1_errors += 1;
+                // Write to stdout immediately
+                if let Err(e) = stdout.write_all(data) {
+                    stdout_errors += 1;
                     log::warn!(
-                        "tee_with_command_logging: Failed to write to output1 (error #{}): {}",
-                        output1_errors,
+                        "unified_pty_reader: Failed to write to stdout (error #{}): {}",
+                        stdout_errors,
                         e
                     );
                 }
-                if let Err(e) = output1.flush() {
-                    output1_errors += 1;
+                if let Err(e) = stdout.flush() {
+                    stdout_errors += 1;
                     log::warn!(
-                        "tee_with_command_logging: Failed to flush output1 (error #{}): {}",
-                        output1_errors,
-                        e
-                    );
-                }
-
-                // Write to second output (typically logger pipe)
-                if let Err(e) = output2.write_all(data) {
-                    output2_errors += 1;
-                    log::warn!(
-                        "tee_with_command_logging: Failed to write to output2 (error #{}): {}",
-                        output2_errors,
-                        e
-                    );
-                }
-                if let Err(e) = output2.flush() {
-                    output2_errors += 1;
-                    log::warn!(
-                        "tee_with_command_logging: Failed to flush output2 (error #{}): {}",
-                        output2_errors,
+                        "unified_pty_reader: Failed to flush stdout (error #{}): {}",
+                        stdout_errors,
                         e
                     );
                 }
 
-                // Log to command-specific file if we have an active command
-                if let Err(e) = command_logger.log_command_output(data) {
-                    log::warn!("Failed to log command output: {}", e);
+                // Write to forward pipe immediately
+                if let Err(e) = forward_pipe.write_all(data) {
+                    forward_pipe_errors += 1;
+                    log::warn!(
+                        "unified_pty_reader: Failed to write to forward pipe (error #{}): {}",
+                        forward_pipe_errors,
+                        e
+                    );
+                }
+                if let Err(e) = forward_pipe.flush() {
+                    forward_pipe_errors += 1;
+                    log::warn!(
+                        "unified_pty_reader: Failed to flush forward pipe (error #{}): {}",
+                        forward_pipe_errors,
+                        e
+                    );
                 }
 
-                total_bytes_teed += n as u64;
-                if total_bytes_teed % (1024 * 1024) == 0 {
+                // Add to command buffer if we have an active command
+                if current_command.is_some() {
+                    command_buffer.extend_from_slice(data);
+                }
+
+                // Add data to marker detection buffer
+                data_buffer.extend_from_slice(data);
+
+                // Look for plain text command markers
+                let data_str = String::from_utf8_lossy(&data_buffer);
+                log::trace!("unified_pty_reader: checking buffer for markers, buffer size: {}", data_buffer.len());
+                
+                // Look for start command marker
+                if let Some(start_pos) = data_str.find(START_COMMAND_NAME) {
+                    if let Some(newline_pos) = data_str[start_pos..].find('\n') {
+                        let full_line = &data_str[start_pos..start_pos + newline_pos];
+                        let parts: Vec<&str> = full_line.split_whitespace().collect();
+                        
+                        // Save previous command if exists
+                        if let Some(ref prev_cmd) = current_command {
+                            log::info!("Saving previous command log: {}", prev_cmd);
+                            if let Err(e) = command_logger.save_command_log(prev_cmd, &command_buffer, None) {
+                                log::error!("Failed to save previous command log: {}", e);
+                            }
+                        }
+                        
+                        // Start new command
+                        let command_str = if parts.len() > 1 {
+                            parts[1..].join(" ")
+                        } else {
+                            "unknown".to_string()
+                        };
+                        log::info!("Starting new command buffer for: {}", command_str);
+                        current_command = Some(command_str);
+                        command_buffer.clear();
+                        
+                        // Remove processed part from buffer
+                        let bytes_processed = start_pos + newline_pos + 1;
+                        if bytes_processed < data_buffer.len() {
+                            data_buffer = data_buffer[bytes_processed..].to_vec();
+                        } else {
+                            data_buffer.clear();
+                        }
+                        continue;
+                    }
+                }
+                
+                // Look for end command marker
+                if let Some(end_pos) = data_str.find(END_COMMAND_NAME) {
+                    if let Some(newline_pos) = data_str[end_pos..].find('\n') {
+                        let full_line = &data_str[end_pos..end_pos + newline_pos];
+                        let parts: Vec<&str> = full_line.split_whitespace().collect();
+                        
+                        let exit_status = if parts.len() > 1 {
+                            parts[1].parse::<i32>().ok()
+                        } else {
+                            None
+                        };
+                        
+                        if let Some(ref cmd) = current_command {
+                            log::info!("Ending command '{}' with exit status: {:?}", cmd, exit_status);
+                            if let Err(e) = command_logger.save_command_log(cmd, &command_buffer, exit_status) {
+                                log::error!("Failed to save command log: {}", e);
+                            }
+                        }
+                        
+                        current_command = None;
+                        command_buffer.clear();
+                        
+                        // Remove processed part from buffer
+                        let bytes_processed = end_pos + newline_pos + 1;
+                        if bytes_processed < data_buffer.len() {
+                            data_buffer = data_buffer[bytes_processed..].to_vec();
+                        } else {
+                            data_buffer.clear();
+                        }
+                        continue;
+                    }
+                }
+                
+                // Keep buffer size manageable - keep only last 1KB for marker detection
+                if data_buffer.len() > 1024 {
+                    data_buffer = data_buffer[(data_buffer.len() - 1024)..].to_vec();
+                }
+
+                total_bytes_read += n as u64;
+                if total_bytes_read % (1024 * 1024) == 0 {
                     log::debug!(
-                        "tee_with_command_logging: teed {} MB",
-                        total_bytes_teed / (1024 * 1024)
+                        "unified_pty_reader: read {} MB",
+                        total_bytes_read / (1024 * 1024)
                     );
                 }
             }
             Err(e) => {
                 if e.kind() == io::ErrorKind::Interrupted {
-                    log::trace!("tee_with_command_logging: interrupted, continuing");
+                    log::trace!("unified_pty_reader: interrupted, continuing");
                     continue;
                 }
                 log::error!(
-                    "tee_with_command_logging: I/O error after {} bytes: {}",
-                    total_bytes_teed,
+                    "unified_pty_reader: I/O error after {} bytes: {}",
+                    total_bytes_read,
                     e
                 );
                 return Err(e);
@@ -207,10 +299,10 @@ pub fn tee_with_command_logging(
     }
 
     log::info!(
-        "tee_with_command_logging completed: {} bytes teed, {} output1 errors, {} output2 errors",
-        total_bytes_teed,
-        output1_errors,
-        output2_errors
+        "unified_pty_reader completed: {} bytes read, {} stdout errors, {} forward pipe errors",
+        total_bytes_read,
+        stdout_errors,
+        forward_pipe_errors
     );
     Ok(())
 }

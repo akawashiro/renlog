@@ -1,6 +1,6 @@
 use crate::command_logger::CommandLogger;
 use crate::fifo::FifoPair;
-use crate::io_forward::{forward_with_command_detection, tee_with_command_logging};
+use crate::io_forward::{forward_with_command_detection, unified_pty_reader};
 use crate::pty::{restore_termios, set_raw_mode, PtyPair};
 
 use nix::sys::termios::Termios;
@@ -77,12 +77,6 @@ impl Session {
 
         log::debug!("Creating CommandLogger");
         let command_logger = CommandLogger::new(renlog_dir, pid)?;
-
-        // Start with an initial command log to capture session startup
-        log::debug!("Starting initial command log file");
-        if let Err(e) = command_logger.start_new_command() {
-            log::error!("Failed to start initial command log: {}", e);
-        }
 
         log::info!("Session instance created successfully");
         Ok(Session {
@@ -209,37 +203,34 @@ impl Session {
         let master_for_output = unsafe { File::from_raw_fd(master_dup2) };
         let forward_pipe_clone = unsafe { File::from_raw_fd(forward_dup) };
 
-        // Clone command logger for the threads
-        let command_logger_for_input = self.command_logger.clone();
+        // Clone command logger for the output thread
         let command_logger_for_output = self.command_logger.clone();
 
         // Forward stdin to PTY master with command detection
         log::debug!("Starting stdin->master forwarder thread with command detection");
         thread::spawn(move || {
             log::debug!("Command-aware stdin forwarder thread started");
-            if let Err(e) =
-                forward_with_command_detection(stdin, stdin_master, &command_logger_for_input)
-            {
+            if let Err(e) = forward_with_command_detection(stdin, stdin_master) {
                 log::error!("Error in command-aware stdin forwarding: {}", e);
                 eprintln!("Error in command-aware stdin forwarding: {e}");
             }
             log::debug!("Command-aware stdin forwarder thread ending");
         });
 
-        // Tee PTY master output to both stdout and forward pipe, plus command log
-        log::debug!("Starting master->stdout+pipe+cmdlog tee thread");
+        // Use unified PTY reader for output forwarding and command detection/logging
+        log::debug!("Starting unified PTY reader thread");
         thread::spawn(move || {
-            log::debug!("Command-aware tee forwarder thread started");
-            if let Err(e) = tee_with_command_logging(
+            log::debug!("Unified PTY reader thread started");
+            if let Err(e) = unified_pty_reader(
                 master_for_output,
                 stdout,
                 forward_pipe_clone,
                 &command_logger_for_output,
             ) {
-                log::error!("Error in command-aware tee forwarding: {}", e);
-                eprintln!("Error in command-aware tee forwarding: {e}");
+                log::error!("Error in unified PTY reader: {}", e);
+                eprintln!("Error in unified PTY reader: {e}");
             }
-            log::debug!("Command-aware tee forwarder thread ending");
+            log::debug!("Unified PTY reader thread ending");
         });
 
         log::info!("I/O forwarders started successfully");

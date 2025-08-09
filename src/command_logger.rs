@@ -3,7 +3,6 @@ use crate::symlink_utils::create_or_update_symlink;
 use std::fs::File;
 use std::io::{Result, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
 
 fn sanitize_for_filename(command: &str) -> String {
     // Take first 50 characters and replace problematic characters
@@ -28,7 +27,6 @@ fn sanitize_for_filename(command: &str) -> String {
 pub struct CommandLogger {
     log_dir: String,
     pid: u32,
-    current_log_file: Arc<Mutex<Option<File>>>,
 }
 
 impl CommandLogger {
@@ -55,7 +53,6 @@ impl CommandLogger {
         Ok(CommandLogger {
             log_dir: log_dir.to_string(),
             pid,
-            current_log_file: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -66,25 +63,26 @@ impl CommandLogger {
         Ok(())
     }
 
-    pub fn start_new_command(&self) -> Result<()> {
-        self.start_new_command_with_info("unknown")
-    }
-
-    pub fn start_new_command_with_info(&self, command: &str) -> Result<()> {
+    pub fn save_command_log(
+        &self,
+        command: &str,
+        data: &[u8],
+        exit_status: Option<i32>,
+    ) -> Result<()> {
         log::debug!(
-            "Starting new command, creating new log file for: {}",
-            command
+            "Saving command log for '{}', data size: {} bytes, exit status: {:?}",
+            command,
+            data.len(),
+            exit_status
         );
 
         let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S_%3f").to_string();
-
-        // Create a safe filename from command (limit length and sanitize)
         let safe_command = sanitize_for_filename(command);
         let filename = format!("{}_{}_cmd_{}.log", timestamp, self.pid, safe_command);
         let filepath = PathBuf::from(&self.log_dir).join(&filename);
 
         log::info!(
-            "Creating new command log file: {} for command: {}",
+            "Creating command log file: {} for command: {}",
             filepath.display(),
             command
         );
@@ -103,73 +101,55 @@ impl CommandLogger {
         })?;
 
         // Write command metadata header
-        let header = format!(
-            "# Renlog Command Log\n# Command: {}\n# Started: {}\n# PID: {}\n\n",
+        let mut header = format!(
+            "# Renlog Command Log\n# Command: {}\n# Started: {}\n# PID: {}\n",
             command,
             chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC"),
             self.pid
         );
 
-        if let Err(e) = file.write_all(header.as_bytes()) {
-            log::warn!("Failed to write header to command log: {}", e);
-        } else if let Err(e) = file.flush() {
-            log::warn!("Failed to flush header to command log: {}", e);
+        if let Some(status) = exit_status {
+            header.push_str(&format!("# Exit Status: {}\n", status));
+        }
+        header.push_str("\n");
+
+        file.write_all(header.as_bytes()).map_err(|e| {
+            log::error!("Failed to write header to command log: {}", e);
+            e
+        })?;
+
+        // Write the filtered command output
+        let filtered_data = ansi_filter::strip_ansi_codes(data);
+        file.write_all(&filtered_data).map_err(|e| {
+            log::error!("Failed to write command data to log: {}", e);
+            e
+        })?;
+
+        // Write exit status footer if available
+        if let Some(status) = exit_status {
+            let footer = format!("\n[Command ended with exit status: {}]\n", status);
+            file.write_all(footer.as_bytes()).map_err(|e| {
+                log::error!("Failed to write footer to command log: {}", e);
+                e
+            })?;
         }
 
-        let mut current_file = self.current_log_file.lock().unwrap();
-        *current_file = Some(file);
+        file.flush().map_err(|e| {
+            log::error!("Failed to flush command log: {}", e);
+            e
+        })?;
 
         // Create symlink to the new log file
         if let Err(e) = self.create_latest_symlink(&filename) {
             log::warn!("Failed to create latest.log symlink: {}", e);
         }
 
-        log::debug!("New command log file created successfully");
-        Ok(())
-    }
-
-    pub fn log_command_output(&self, data: &[u8]) -> Result<()> {
-        let mut current_file = self.current_log_file.lock().unwrap();
-
-        if let Some(ref mut file) = *current_file {
-            let filtered_data = ansi_filter::strip_ansi_codes(data);
-            file.write_all(&filtered_data)?;
-            file.flush()?;
-            log::debug!(
-                "Logged {} bytes to command file (filtered from {} bytes)",
-                filtered_data.len(),
-                data.len()
-            );
-        } else {
-            log::warn!("Attempted to log command output but no active log file");
-        }
+        log::info!(
+            "Command log saved successfully: {} bytes (filtered from {} bytes)",
+            filtered_data.len(),
+            data.len()
+        );
 
         Ok(())
-    }
-
-    pub fn end_command(&self, exit_status: Option<i32>) {
-        log::debug!("Ending current command with exit status: {:?}", exit_status);
-
-        // Write exit status to log if we have an active file
-        if let Some(exit_status) = exit_status {
-            let mut current_file = self.current_log_file.lock().unwrap();
-            if let Some(ref mut file) = *current_file {
-                let status_msg = format!("\n[Command ended with exit status: {}]\n", exit_status);
-                if let Err(e) = file.write_all(status_msg.as_bytes()) {
-                    log::warn!("Failed to write exit status to command log: {}", e);
-                } else if let Err(e) = file.flush() {
-                    log::warn!("Failed to flush exit status to command log: {}", e);
-                }
-            }
-        }
-
-        log::debug!("Current command ended");
-    }
-
-    pub fn close_current_command(&self) {
-        log::debug!("Closing current command log file");
-        let mut current_file = self.current_log_file.lock().unwrap();
-        *current_file = None;
-        log::debug!("Current command log file closed");
     }
 }
