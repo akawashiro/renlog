@@ -1,3 +1,4 @@
+mod command_logger;
 mod fifo;
 mod io_forward;
 mod logging;
