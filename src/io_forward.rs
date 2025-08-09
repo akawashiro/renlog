@@ -5,8 +5,6 @@ use std::io::{self, Read, Result, Write};
 
 const BUFFER_SIZE: usize = 32 * 1024;
 
-
-
 // Command-aware input forwarding with command marker detection
 pub fn forward_with_command_detection(
     mut input: File,
@@ -40,10 +38,10 @@ pub fn forward_with_command_detection(
 
                 // Try to decode command markers from the accumulated data
                 let (success, prefix, args) = command_markers::try_decode_bytes(&data_buffer);
-                
+
                 if success {
                     log::debug!("Detected command marker with args: {:?}", args);
-                    
+
                     // Process the command
                     if !args.is_empty() {
                         if args[0] == "end-command" {
@@ -65,10 +63,11 @@ pub fn forward_with_command_detection(
                     }
 
                     // Keep any remaining data after the command marker for next iteration
-                    let marker_and_command_len = prefix.len() + 
-                        command_markers::COMMAND_MARKER.len() + 
-                        args.join(" ").len() + 1; // +1 for newline
-                    
+                    let marker_and_command_len = prefix.len()
+                        + command_markers::COMMAND_MARKER.len()
+                        + args.join(" ").len()
+                        + 1; // +1 for newline
+
                     if marker_and_command_len < data_buffer.len() {
                         data_buffer = data_buffer[marker_and_command_len..].to_vec();
                     } else {

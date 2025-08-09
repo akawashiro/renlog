@@ -42,20 +42,23 @@ impl CommandLogger {
 
     fn create_latest_symlink(&self, filename: &str) -> Result<()> {
         let latest_path = Path::new(&self.log_dir).join("latest.log");
-        
+
         // Remove existing symlink if it exists
         if latest_path.exists() || latest_path.is_symlink() {
             if let Err(e) = std::fs::remove_file(&latest_path) {
                 log::warn!("Failed to remove existing latest.log symlink: {}", e);
             }
         }
-        
+
         // Create new symlink
         fs::symlink(filename, &latest_path).map_err(|e| {
             log::error!("Failed to create latest.log symlink -> {}: {}", filename, e);
-            std::io::Error::other(format!("Failed to create latest.log symlink -> {}: {}", filename, e))
+            std::io::Error::other(format!(
+                "Failed to create latest.log symlink -> {}: {}",
+                filename, e
+            ))
         })?;
-        
+
         log::info!("Created latest.log symlink pointing to: {}", filename);
         Ok(())
     }
@@ -115,7 +118,7 @@ impl CommandLogger {
 
     pub fn end_command(&self, exit_status: Option<i32>) {
         log::debug!("Ending current command with exit status: {:?}", exit_status);
-        
+
         // Write exit status to log if we have an active file
         if let Some(exit_status) = exit_status {
             let mut current_file = self.current_log_file.lock().unwrap();
@@ -128,7 +131,7 @@ impl CommandLogger {
                 }
             }
         }
-        
+
         log::debug!("Current command ended");
     }
 
@@ -138,5 +141,4 @@ impl CommandLogger {
         *current_file = None;
         log::debug!("Current command log file closed");
     }
-
 }

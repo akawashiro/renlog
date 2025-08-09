@@ -48,7 +48,6 @@ pub fn strip_ansi_codes(input: &[u8]) -> Vec<u8> {
     cleaned.into_owned().into_bytes()
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

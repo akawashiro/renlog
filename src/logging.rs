@@ -49,14 +49,14 @@ impl Log for GlogLogger {
             let timestamp = now.format("%Y%m%d %H:%M:%S%.6f");
             let pid = std::process::id();
             let level_char = Self::level_to_char(record.level());
-            
+
             let file_line = if let (Some(file), Some(line)) = (record.file(), record.line()) {
                 let file_name = file.rsplit('/').next().unwrap_or(file);
                 format!(" {}:{}", file_name, line)
             } else {
                 String::new()
             };
-            
+
             let formatted = format!(
                 "{}{} {}{}] {}\n",
                 level_char,
@@ -65,7 +65,7 @@ impl Log for GlogLogger {
                 file_line,
                 record.args()
             );
-            
+
             if let Ok(mut file_guard) = self.file.lock() {
                 if let Some(file) = file_guard.as_mut() {
                     let _ = file.write_all(formatted.as_bytes());
@@ -126,12 +126,12 @@ fn init_file_logging(file_path: &str, level: LevelFilter) -> Result<()> {
 
     LOGGER.set_file(file);
     LOGGER.set_level(level);
-    
+
     log::set_logger(&LOGGER)
         .map_err(|e| io::Error::other(format!("Failed to set logger: {}", e)))?;
-    
+
     log::set_max_level(level);
-    
+
     Ok(())
 }
 
@@ -140,4 +140,3 @@ fn init_null_logging() -> Result<()> {
     LOGGING_ENABLED.store(false, Ordering::Relaxed);
     Ok(())
 }
-

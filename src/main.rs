@@ -11,8 +11,8 @@ use chrono::Utc;
 use clap::{Parser, Subcommand};
 use session::Session;
 use std::io::Result;
-use std::path::Path;
 use std::os::unix::fs;
+use std::path::Path;
 
 #[derive(Parser)]
 #[command(name = "renlog")]
@@ -47,16 +47,28 @@ fn create_or_update_symlink(target: &str, symlink_path: &Path) -> Result<()> {
     // Remove existing symlink if it exists
     if symlink_path.exists() || symlink_path.is_symlink() {
         if let Err(e) = std::fs::remove_file(symlink_path) {
-            log::warn!("Failed to remove existing symlink {:?}: {}", symlink_path, e);
+            log::warn!(
+                "Failed to remove existing symlink {:?}: {}",
+                symlink_path,
+                e
+            );
         }
     }
-    
+
     // Create new symlink
     fs::symlink(target, symlink_path).map_err(|e| {
-        log::error!("Failed to create symlink {:?} -> {}: {}", symlink_path, target, e);
-        std::io::Error::other(format!("Failed to create symlink {:?} -> {}: {}", symlink_path, target, e))
+        log::error!(
+            "Failed to create symlink {:?} -> {}: {}",
+            symlink_path,
+            target,
+            e
+        );
+        std::io::Error::other(format!(
+            "Failed to create symlink {:?} -> {}: {}",
+            symlink_path, target, e
+        ))
     })?;
-    
+
     log::info!("Created symlink {:?} pointing to: {}", symlink_path, target);
     Ok(())
 }
@@ -70,9 +82,7 @@ async fn main() -> Result<()> {
             show_zsh_rc();
             Ok(())
         }
-        Commands::Log { renlog_dir } => {
-            run_log_session(&renlog_dir, &args.log_level).await
-        }
+        Commands::Log { renlog_dir } => run_log_session(&renlog_dir, &args.log_level).await,
     }
 }
 
@@ -87,7 +97,7 @@ async fn run_log_session(renlog_dir: &str, log_level: &str) -> Result<()> {
     // Create the log directory if it doesn't exist
     std::fs::create_dir_all(renlog_dir).map_err(|e| {
         std::io::Error::other(format!(
-            "Failed to create renlog directory '{}': {}", 
+            "Failed to create renlog directory '{}': {}",
             renlog_dir, e
         ))
     })?;
@@ -125,7 +135,8 @@ async fn run_log_session(renlog_dir: &str, log_level: &str) -> Result<()> {
 }
 
 fn show_zsh_rc() {
-    println!(r#"
+    println!(
+        r#"
 #==============================================================================
 # Renlog Zsh setup script
 #
@@ -141,18 +152,22 @@ fn show_zsh_rc() {
 # Execute this command in Zsh's preexec_functions to tell renlog to start logging for a command.
 function renlog_zsh_preexec() {{
     local cmd="$3" # Current command line.
-    if [[ -n "$RENLOG_LOGGER_IN" ]] && [[ -w "$RENLOG_LOGGER_IN" ]]; then
-        # Send command marker to renlog
-        printf '\x1b\x01\x09\x07\x03\x02\x05renlog:%s\n' "$cmd" > "$RENLOG_LOGGER_IN"
+    if [[ -n "$RENLOG_PID" ]]; then
+        # Send command marker to renlog via invisible stdout
+        printf '\x1b\x01\x09\x07\x03\x02\x05renlog:%s\n' "$cmd"
+        # Move cursor up and clear the line to make it invisible
+        echo -ne "\e[A\e[2K"
     fi
 }}
 
 # Execute this command in Zsh's precmd_functions to tell renlog to stop logging for the current command.
 function renlog_zsh_postexec() {{
     local last_status=$?
-    if [[ -n "$RENLOG_LOGGER_IN" ]] && [[ -w "$RENLOG_LOGGER_IN" ]]; then
-        # Send end command marker to renlog
-        printf '\x1b\x01\x09\x07\x03\x02\x05renlog:end-command %d\n' "$last_status" > "$RENLOG_LOGGER_IN"
+    if [[ -n "$RENLOG_PID" ]]; then
+        # Send end command marker to renlog via invisible stdout
+        printf '\x1b\x01\x09\x07\x03\x02\x05renlog:end-command %d\n' "$last_status"
+        # Move cursor up and clear the line to make it invisible
+        echo -ne "\e[A\e[2K"
     fi
 }}
 
@@ -160,7 +175,7 @@ function renlog_zsh_postexec() {{
 # Set up pre/post exec hooks if we're running inside renlog
 #==============================================================================
 
-if [[ -n "$RENLOG_PID" ]] && [[ -n "$RENLOG_LOGGER_IN" ]]; then
+if [[ -n "$RENLOG_PID" ]]; then
     # By default, zsh always prints a percent followed by a bunch of spaces
     # before prompt, which will be picked up by renlog.
     # Disable it.
@@ -173,5 +188,6 @@ if [[ -n "$RENLOG_PID" ]] && [[ -n "$RENLOG_LOGGER_IN" ]]; then
     echo "Renlog zsh integration loaded (PID: $RENLOG_PID)"
 fi
 
-"#);
+"#
+    );
 }

@@ -109,13 +109,11 @@ impl Session {
         // Set environment variables that the shell integration would use
         cmd.env("RENLOG_PID", self.pid.to_string());
         cmd.env("RENLOG_DIR", &self.renlog_dir);
-        cmd.env("RENLOG_LOGGER_IN", self.fifos.forward_path_str());
         cmd.env("RENLOG_LOGGER_OUT", self.fifos.reverse_path_str());
         log::debug!(
-            "Set environment variables: RENLOG_PID={}, RENLOG_DIR={}, RENLOG_LOGGER_IN={}, RENLOG_LOGGER_OUT={}",
+            "Set environment variables: RENLOG_PID={}, RENLOG_DIR={}, RENLOG_LOGGER_OUT={}",
             self.pid,
             &self.renlog_dir,
-            self.fifos.forward_path_str(),
             self.fifos.reverse_path_str()
         );
 
@@ -268,7 +266,6 @@ impl Session {
             Ok(0)
         }
     }
-
 }
 
 impl Drop for Session {
