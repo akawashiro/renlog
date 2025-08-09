@@ -1,11 +1,11 @@
 mod fifo;
 mod io_forward;
-mod logger;
 mod logging;
 mod pty;
+mod session;
 
 use clap::Parser;
-use logger::Logger;
+use session::Session;
 use std::io::Result;
 
 #[derive(Parser)]
@@ -36,20 +36,20 @@ async fn main() -> Result<()> {
     log::info!("Starting Renlog (Rust implementation of zenlog)...");
     println!("Starting Renlog (Rust implementation of zenlog)...");
 
-    // Create and initialize logger
-    let mut logger = Logger::new()?;
+    // Create and initialize session
+    let mut session = Session::new()?;
 
     // Start child process in PTY
-    logger.start_child()?;
+    session.start_child()?;
 
     // Start I/O forwarders
-    logger.start_forwarders()?;
+    session.start_forwarders()?;
 
-    // Run the main logger loop (simplified for Phase 1)
-    println!("Logger initialized. Type 'exit' to quit.");
+    // Run the main session loop (simplified for Phase 1)
+    println!("Session initialized. Type 'exit' to quit.");
 
-    // For now, just run the logger loop and wait for child
-    let exit_code = logger.wait_for_child()?;
+    // For now, just run the session loop and wait for child
+    let exit_code = session.wait_for_child()?;
 
     log::info!("Renlog session ended with exit code: {}", exit_code);
     println!("Renlog session ended with exit code: {exit_code}");

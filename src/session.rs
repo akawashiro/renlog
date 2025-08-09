@@ -11,7 +11,7 @@ use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::process::{Child, Command, Stdio};
 use std::thread;
 
-pub struct Logger {
+pub struct Session {
     pty: PtyPair,
     fifos: FifoPair,
     child: Option<Child>,
@@ -19,12 +19,12 @@ pub struct Logger {
     pid: u32,
 }
 
-impl Logger {
+impl Session {
     pub fn new() -> Result<Self> {
-        log::debug!("Creating new Logger instance");
+        log::debug!("Creating new Session instance");
         let temp_dir = env::var("TMPDIR").unwrap_or_else(|_| "/tmp".to_string());
         let pid = std::process::id();
-        log::info!("Logger initializing with PID={} temp_dir={}", pid, temp_dir);
+        log::info!("Session initializing with PID={} temp_dir={}", pid, temp_dir);
 
         log::debug!("Creating PTY pair");
         let pty = PtyPair::new()?;
@@ -48,8 +48,8 @@ impl Logger {
 
         println!("Renlog starting... [PID={pid}]");
 
-        log::info!("Logger instance created successfully");
-        Ok(Logger {
+        log::info!("Session instance created successfully");
+        Ok(Session {
             pty,
             fifos,
             child: None,
@@ -203,9 +203,9 @@ impl Logger {
     }
 }
 
-impl Drop for Logger {
+impl Drop for Session {
     fn drop(&mut self) {
-        log::debug!("Logger Drop trait called - starting cleanup");
+        log::debug!("Session Drop trait called - starting cleanup");
 
         // Restore original terminal settings
         if let Some(termios) = &self.original_termios {
@@ -230,7 +230,7 @@ impl Drop for Logger {
             }
         }
 
-        log::info!("Logger cleanup completed");
-        println!("Logger cleanup completed");
+        log::info!("Session cleanup completed");
+        println!("Session cleanup completed");
     }
 }
