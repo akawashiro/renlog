@@ -138,16 +138,6 @@ fn show_zsh_rc() {
 # Basic helper functions
 #==============================================================================
 
-# Renlog helper command: print the "environment".
-# Re-define this function to change what's written to ENV log files.
-function renlog_zsh_dump_env() {{
-    {{
-        echo "PWD: $(pwd)"
-        echo "git HEAD: $(git rev-parse HEAD) $(git rev-parse --abbrev-ref HEAD)"
-        env
-    }} 2>/dev/null
-}}
-
 # Execute this command in Zsh's preexec_functions to tell renlog to start logging for a command.
 function renlog_zsh_preexec() {{
     local cmd="$3" # Current command line.
@@ -182,27 +172,6 @@ if [[ -n "$RENLOG_PID" ]] && [[ -n "$RENLOG_LOGGER_IN" ]]; then
     
     echo "Renlog zsh integration loaded (PID: $RENLOG_PID)"
 fi
-
-#==============================================================================
-# Helper functions for manual usage
-#==============================================================================
-
-# Check if running inside renlog
-function in_renlog() {{
-    [[ -n "$RENLOG_PID" ]]
-}}
-
-# Get current renlog directory
-function renlog_dir() {{
-    echo "$RENLOG_DIR"
-}}
-
-# Get current log file (latest.log symlink)
-function renlog_current_log() {{
-    if [[ -n "$RENLOG_DIR" ]] && [[ -L "$RENLOG_DIR/latest.log" ]]; then
-        echo "$RENLOG_DIR/latest.log"
-    fi
-}}
 
 "#);
 }
