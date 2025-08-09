@@ -112,15 +112,6 @@ pub fn save_command_log(
         e
     })?;
 
-    // Write exit status footer if available
-    if let Some(status) = exit_status {
-        let footer = format!("\n[Command ended with exit status: {}]\n", status);
-        file.write_all(footer.as_bytes()).map_err(|e| {
-            log::error!("Failed to write footer to command log: {}", e);
-            e
-        })?;
-    }
-
     file.flush().map_err(|e| {
         log::error!("Failed to flush command log: {}", e);
         e
