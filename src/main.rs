@@ -3,18 +3,19 @@ mod io_forward;
 mod logger;
 mod pty;
 
+use clap::Parser;
 use logger::Logger;
-use std::env;
 use std::io::Result;
+
+#[derive(Parser)]
+#[command(name = "renlog")]
+#[command(about = "Rust implementation of zenlog")]
+#[command(long_about = "Renlog - Rust implementation of zenlog\nPhase 1 implementation - basic PTY and I/O forwarding")]
+struct Args {}
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let args: Vec<String> = env::args().collect();
-
-    if args.len() > 1 && args[1] == "--help" {
-        print_help();
-        return Ok(());
-    }
+    let _args = Args::parse();
 
     println!("Starting Renlog (Rust implementation of zenlog)...");
 
@@ -37,12 +38,3 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn print_help() {
-    println!("Renlog - Rust implementation of zenlog");
-    println!("Usage: renlog [options]");
-    println!("");
-    println!("Options:");
-    println!("  --help    Show this help message");
-    println!("");
-    println!("Phase 1 implementation - basic PTY and I/O forwarding");
-}
