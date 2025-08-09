@@ -19,7 +19,7 @@ use std::path::Path;
 )]
 struct Args {
     #[arg(long, help = "Directory path for renlog log files (mandatory)")]
-    renlog_log_dir: String,
+    renlog_dir: String,
 
     #[arg(
         long,
@@ -34,7 +34,7 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     // Construct the log file path in the renlog log directory
-    let log_file_path = Path::new(&args.renlog_log_dir).join("renlog.log");
+    let log_file_path = Path::new(&args.renlog_dir).join("renlog.log");
     let log_file_str = log_file_path.to_string_lossy();
 
     // Initialize logging system first
@@ -44,7 +44,7 @@ async fn main() -> Result<()> {
     println!("Starting Renlog (Rust implementation of zenlog)...");
 
     // Create and initialize session
-    let mut session = Session::new(&args.renlog_log_dir)?;
+    let mut session = Session::new(&args.renlog_dir)?;
 
     // Start child process in PTY
     session.start_child()?;

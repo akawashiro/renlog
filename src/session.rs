@@ -18,30 +18,30 @@ pub struct Session {
     child: Option<Child>,
     original_termios: Option<Termios>,
     pid: u32,
-    renlog_log_dir: String,
+    renlog_dir: String,
     command_logger: CommandLogger,
 }
 
 impl Session {
-    pub fn new(renlog_log_dir: &str) -> Result<Self> {
+    pub fn new(renlog_dir: &str) -> Result<Self> {
         log::debug!("Creating new Session instance");
         let pid = std::process::id();
         log::info!(
-            "Session initializing with PID={} renlog_log_dir={}",
+            "Session initializing with PID={} renlog_dir={}",
             pid,
-            renlog_log_dir
+            renlog_dir
         );
 
         // Create the log directory if it doesn't exist
-        std::fs::create_dir_all(renlog_log_dir).map_err(|e| {
+        std::fs::create_dir_all(renlog_dir).map_err(|e| {
             log::error!(
                 "Failed to create renlog log directory '{}': {}",
-                renlog_log_dir,
+                renlog_dir,
                 e
             );
             io::Error::other(format!(
                 "Failed to create renlog log directory '{}': {}",
-                renlog_log_dir, e
+                renlog_dir, e
             ))
         })?;
 
@@ -49,7 +49,7 @@ impl Session {
         let pty = PtyPair::new()?;
 
         log::debug!("Creating FIFO pair");
-        let mut fifos = FifoPair::new(renlog_log_dir, pid)?;
+        let mut fifos = FifoPair::new(renlog_dir, pid)?;
         fifos.open()?;
         log::info!(
             "FIFO pipes created and opened: forward={}, reverse={}",
@@ -76,7 +76,7 @@ impl Session {
         println!("Renlog starting... [PID={pid}]");
 
         log::debug!("Creating CommandLogger");
-        let command_logger = CommandLogger::new(renlog_log_dir, pid)?;
+        let command_logger = CommandLogger::new(renlog_dir, pid)?;
 
         // Start with an initial command log to capture session startup
         log::debug!("Starting initial command log file");
@@ -91,7 +91,7 @@ impl Session {
             child: None,
             original_termios,
             pid,
-            renlog_log_dir: renlog_log_dir.to_string(),
+            renlog_dir: renlog_dir.to_string(),
             command_logger,
         })
     }
@@ -108,13 +108,13 @@ impl Session {
 
         // Set environment variables that the shell integration would use
         cmd.env("RENLOG_PID", self.pid.to_string());
-        cmd.env("RENLOG_LOG_DIR", &self.renlog_log_dir);
+        cmd.env("RENLOG_DIR", &self.renlog_dir);
         cmd.env("RENLOG_LOGGER_IN", self.fifos.forward_path_str());
         cmd.env("RENLOG_LOGGER_OUT", self.fifos.reverse_path_str());
         log::debug!(
-            "Set environment variables: RENLOG_PID={}, RENLOG_LOG_DIR={}, RENLOG_LOGGER_IN={}, RENLOG_LOGGER_OUT={}",
+            "Set environment variables: RENLOG_PID={}, RENLOG_DIR={}, RENLOG_LOGGER_IN={}, RENLOG_LOGGER_OUT={}",
             self.pid,
-            &self.renlog_log_dir,
+            &self.renlog_dir,
             self.fifos.forward_path_str(),
             self.fifos.reverse_path_str()
         );
