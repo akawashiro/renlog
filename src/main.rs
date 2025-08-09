@@ -75,7 +75,6 @@ async fn run_log_session(renlog_dir: &str, log_level: &str) -> Result<()> {
         ))
     })?;
 
-    // Initialize logging system first
     logging::init_logging(&log_file_str, log_level)?;
 
     // Create symlink for renlog-latest.log pointing to the current renlog internal log file
@@ -87,19 +86,14 @@ async fn run_log_session(renlog_dir: &str, log_level: &str) -> Result<()> {
     log::info!("Starting Renlog (Rust implementation of zenlog)...");
     println!("Starting Renlog (Rust implementation of zenlog)...");
 
-    // Create and initialize session
     let mut session = Session::new(renlog_dir)?;
 
-    // Start child process in PTY
     session.start_child()?;
 
-    // Start I/O forwarders
     session.start_forwarders()?;
 
-    // Run the main session loop (simplified for Phase 1)
     println!("Session initialized. Type 'exit' to quit.");
 
-    // For now, just run the session loop and wait for child
     let exit_code = session.wait_for_child()?;
 
     log::info!("Renlog session ended with exit code: {}", exit_code);
