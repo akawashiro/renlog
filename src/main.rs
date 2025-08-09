@@ -11,6 +11,7 @@ use clap::Parser;
 use session::Session;
 use std::io::Result;
 use std::path::Path;
+use std::os::unix::fs;
 
 #[derive(Parser)]
 #[command(name = "renlog")]
@@ -30,6 +31,24 @@ struct Args {
     log_level: String,
 }
 
+fn create_or_update_symlink(target: &str, symlink_path: &Path) -> Result<()> {
+    // Remove existing symlink if it exists
+    if symlink_path.exists() || symlink_path.is_symlink() {
+        if let Err(e) = std::fs::remove_file(symlink_path) {
+            log::warn!("Failed to remove existing symlink {:?}: {}", symlink_path, e);
+        }
+    }
+    
+    // Create new symlink
+    fs::symlink(target, symlink_path).map_err(|e| {
+        log::error!("Failed to create symlink {:?} -> {}: {}", symlink_path, target, e);
+        std::io::Error::other(format!("Failed to create symlink {:?} -> {}: {}", symlink_path, target, e))
+    })?;
+    
+    log::info!("Created symlink {:?} pointing to: {}", symlink_path, target);
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
@@ -38,7 +57,7 @@ async fn main() -> Result<()> {
     let pid = std::process::id();
     let timestamp = Utc::now().format("%Y%m%d_%H%M%S_%3f").to_string();
     let log_filename = format!("renlog_{}_{}.log", timestamp, pid);
-    let log_file_path = Path::new(&args.renlog_dir).join(log_filename);
+    let log_file_path = Path::new(&args.renlog_dir).join(&log_filename);
     let log_file_str = log_file_path.to_string_lossy();
 
     // Create the log directory if it doesn't exist
@@ -51,6 +70,12 @@ async fn main() -> Result<()> {
 
     // Initialize logging system first
     logging::init_logging(&log_file_str, &args.log_level)?;
+
+    // Create symlink for renlog-latest.log pointing to the current renlog internal log file
+    let renlog_latest_path = Path::new(&args.renlog_dir).join("renlog-latest.log");
+    if let Err(e) = create_or_update_symlink(&log_filename, &renlog_latest_path) {
+        log::warn!("Failed to create renlog-latest.log symlink: {}", e);
+    }
 
     log::info!("Starting Renlog (Rust implementation of zenlog)...");
     println!("Starting Renlog (Rust implementation of zenlog)...");

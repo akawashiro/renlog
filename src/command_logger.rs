@@ -1,7 +1,8 @@
 use crate::ansi_filter;
 use std::fs::File;
 use std::io::{Result, Write};
-use std::path::PathBuf;
+use std::os::unix::fs;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
@@ -39,12 +40,32 @@ impl CommandLogger {
         })
     }
 
+    fn create_latest_symlink(&self, filename: &str) -> Result<()> {
+        let latest_path = Path::new(&self.log_dir).join("latest.log");
+        
+        // Remove existing symlink if it exists
+        if latest_path.exists() || latest_path.is_symlink() {
+            if let Err(e) = std::fs::remove_file(&latest_path) {
+                log::warn!("Failed to remove existing latest.log symlink: {}", e);
+            }
+        }
+        
+        // Create new symlink
+        fs::symlink(filename, &latest_path).map_err(|e| {
+            log::error!("Failed to create latest.log symlink -> {}: {}", filename, e);
+            std::io::Error::other(format!("Failed to create latest.log symlink -> {}: {}", filename, e))
+        })?;
+        
+        log::info!("Created latest.log symlink pointing to: {}", filename);
+        Ok(())
+    }
+
     pub fn start_new_command(&self) -> Result<()> {
         log::debug!("Starting new command, creating new log file");
 
         let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S_%3f").to_string();
         let filename = format!("{}_{}.log", timestamp, self.pid);
-        let filepath = PathBuf::from(&self.log_dir).join(filename);
+        let filepath = PathBuf::from(&self.log_dir).join(&filename);
 
         log::info!("Creating new command log file: {}", filepath.display());
 
@@ -63,6 +84,11 @@ impl CommandLogger {
 
         let mut current_file = self.current_log_file.lock().unwrap();
         *current_file = Some(file);
+
+        // Create symlink to the new log file
+        if let Err(e) = self.create_latest_symlink(&filename) {
+            log::warn!("Failed to create latest.log symlink: {}", e);
+        }
 
         log::debug!("New command log file created successfully");
         Ok(())
