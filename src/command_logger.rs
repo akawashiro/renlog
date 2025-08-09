@@ -1,7 +1,7 @@
 use crate::ansi_filter;
+use crate::symlink_utils::create_or_update_symlink;
 use std::fs::File;
 use std::io::{Result, Write};
-use std::os::unix::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -61,23 +61,7 @@ impl CommandLogger {
 
     fn create_latest_symlink(&self, filename: &str) -> Result<()> {
         let latest_path = Path::new(&self.log_dir).join("latest.log");
-
-        // Remove existing symlink if it exists
-        if latest_path.exists() || latest_path.is_symlink() {
-            if let Err(e) = std::fs::remove_file(&latest_path) {
-                log::warn!("Failed to remove existing latest.log symlink: {}", e);
-            }
-        }
-
-        // Create new symlink
-        fs::symlink(filename, &latest_path).map_err(|e| {
-            log::error!("Failed to create latest.log symlink -> {}: {}", filename, e);
-            std::io::Error::other(format!(
-                "Failed to create latest.log symlink -> {}: {}",
-                filename, e
-            ))
-        })?;
-
+        create_or_update_symlink(filename, &latest_path)?;
         log::info!("Created latest.log symlink pointing to: {}", filename);
         Ok(())
     }
