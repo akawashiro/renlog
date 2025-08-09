@@ -41,6 +41,14 @@ async fn main() -> Result<()> {
     let log_file_path = Path::new(&args.renlog_dir).join(log_filename);
     let log_file_str = log_file_path.to_string_lossy();
 
+    // Create the log directory if it doesn't exist
+    std::fs::create_dir_all(&args.renlog_dir).map_err(|e| {
+        std::io::Error::other(format!(
+            "Failed to create renlog directory '{}': {}", 
+            &args.renlog_dir, e
+        ))
+    })?;
+
     // Initialize logging system first
     logging::init_logging(&log_file_str, &args.log_level)?;
 
