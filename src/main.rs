@@ -1,5 +1,6 @@
 mod ansi_filter;
 mod command_logger;
+mod command_markers;
 mod fifo;
 mod io_forward;
 mod logging;
@@ -7,7 +8,7 @@ mod pty;
 mod session;
 
 use chrono::Utc;
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use session::Session;
 use std::io::Result;
 use std::path::Path;
@@ -17,11 +18,14 @@ use std::os::unix::fs;
 #[command(name = "renlog")]
 #[command(about = "Rust implementation of zenlog")]
 #[command(
-    long_about = "Renlog - Rust implementation of zenlog\nPhase 1 implementation - basic PTY and I/O forwarding"
+    long_about = "Renlog - Rust implementation of zenlog\nRust-based logging tool with command boundary detection"
 )]
 struct Args {
-    #[arg(long, help = "Directory path for renlog log files (mandatory)")]
-    renlog_dir: String,
+    #[command(subcommand)]
+    command: Option<Commands>,
+
+    #[arg(long, help = "Directory path for renlog log files (mandatory when using log command)")]
+    renlog_dir: Option<String>,
 
     #[arg(
         long,
@@ -29,6 +33,17 @@ struct Args {
         help = "Log level (error/warn/info/debug/trace)"
     )]
     log_level: String,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Run renlog session (default behavior)
+    Log {
+        #[arg(long, help = "Directory path for renlog log files (mandatory)")]
+        renlog_dir: String,
+    },
+    /// Show zsh configuration for shell integration
+    ShowZshRc,
 }
 
 fn create_or_update_symlink(target: &str, symlink_path: &Path) -> Result<()> {
@@ -53,26 +68,48 @@ fn create_or_update_symlink(target: &str, symlink_path: &Path) -> Result<()> {
 async fn main() -> Result<()> {
     let args = Args::parse();
 
+    match args.command {
+        Some(Commands::ShowZshRc) => {
+            show_zsh_rc();
+            Ok(())
+        }
+        Some(Commands::Log { renlog_dir }) => {
+            run_log_session(&renlog_dir, &args.log_level).await
+        }
+        None => {
+            // Default behavior - require renlog_dir and run log session
+            if let Some(renlog_dir) = args.renlog_dir {
+                run_log_session(&renlog_dir, &args.log_level).await
+            } else {
+                eprintln!("Error: --renlog-dir is required when not using a subcommand");
+                eprintln!("Usage: renlog --renlog-dir <DIR> or renlog log --renlog-dir <DIR>");
+                std::process::exit(1);
+            }
+        }
+    }
+}
+
+async fn run_log_session(renlog_dir: &str, log_level: &str) -> Result<()> {
     // Construct the log file path in the renlog log directory
     let pid = std::process::id();
     let timestamp = Utc::now().format("%Y%m%d_%H%M%S_%3f").to_string();
     let log_filename = format!("renlog_{}_{}.log", timestamp, pid);
-    let log_file_path = Path::new(&args.renlog_dir).join(&log_filename);
+    let log_file_path = Path::new(renlog_dir).join(&log_filename);
     let log_file_str = log_file_path.to_string_lossy();
 
     // Create the log directory if it doesn't exist
-    std::fs::create_dir_all(&args.renlog_dir).map_err(|e| {
+    std::fs::create_dir_all(renlog_dir).map_err(|e| {
         std::io::Error::other(format!(
             "Failed to create renlog directory '{}': {}", 
-            &args.renlog_dir, e
+            renlog_dir, e
         ))
     })?;
 
     // Initialize logging system first
-    logging::init_logging(&log_file_str, &args.log_level)?;
+    logging::init_logging(&log_file_str, log_level)?;
 
     // Create symlink for renlog-latest.log pointing to the current renlog internal log file
-    let renlog_latest_path = Path::new(&args.renlog_dir).join("renlog-latest.log");
+    let renlog_latest_path = Path::new(renlog_dir).join("renlog-latest.log");
     if let Err(e) = create_or_update_symlink(&log_filename, &renlog_latest_path) {
         log::warn!("Failed to create renlog-latest.log symlink: {}", e);
     }
@@ -81,7 +118,7 @@ async fn main() -> Result<()> {
     println!("Starting Renlog (Rust implementation of zenlog)...");
 
     // Create and initialize session
-    let mut session = Session::new(&args.renlog_dir)?;
+    let mut session = Session::new(renlog_dir)?;
 
     // Start child process in PTY
     session.start_child()?;
@@ -98,4 +135,87 @@ async fn main() -> Result<()> {
     log::info!("Renlog session ended with exit code: {}", exit_code);
     println!("Renlog session ended with exit code: {exit_code}");
     Ok(())
+}
+
+fn show_zsh_rc() {
+    println!(r#"
+#==============================================================================
+# Renlog Zsh setup script
+#
+# Add the following line to your $HOME/.zshrc file:
+#
+# eval "$(renlog show-zsh-rc)"
+#==============================================================================
+
+#==============================================================================
+# Basic helper functions
+#==============================================================================
+
+# Renlog helper command: print the "environment".
+# Re-define this function to change what's written to ENV log files.
+function renlog_zsh_dump_env() {{
+    {{
+        echo "PWD: $(pwd)"
+        echo "git HEAD: $(git rev-parse HEAD) $(git rev-parse --abbrev-ref HEAD)"
+        env
+    }} 2>/dev/null
+}}
+
+# Execute this command in Zsh's preexec_functions to tell renlog to start logging for a command.
+function renlog_zsh_preexec() {{
+    local cmd="$3" # Current command line.
+    if [[ -n "$RENLOG_LOGGER_IN" ]] && [[ -w "$RENLOG_LOGGER_IN" ]]; then
+        # Send command marker to renlog
+        printf '\x1b\x01\x09\x07\x03\x02\x05renlog:%s\n' "$cmd" > "$RENLOG_LOGGER_IN"
+    fi
+}}
+
+# Execute this command in Zsh's precmd_functions to tell renlog to stop logging for the current command.
+function renlog_zsh_postexec() {{
+    local last_status=$?
+    if [[ -n "$RENLOG_LOGGER_IN" ]] && [[ -w "$RENLOG_LOGGER_IN" ]]; then
+        # Send end command marker to renlog
+        printf '\x1b\x01\x09\x07\x03\x02\x05renlog:end-command %d\n' "$last_status" > "$RENLOG_LOGGER_IN"
+    fi
+}}
+
+#==============================================================================
+# Set up pre/post exec hooks if we're running inside renlog
+#==============================================================================
+
+if [[ -n "$RENLOG_PID" ]] && [[ -n "$RENLOG_LOGGER_IN" ]]; then
+    # By default, zsh always prints a percent followed by a bunch of spaces
+    # before prompt, which will be picked up by renlog.
+    # Disable it.
+    # https://unix.stackexchange.com/questions/167582/
+    unsetopt prompt_cr prompt_sp
+
+    precmd_functions=(renlog_zsh_postexec "$precmd_functions[@]")
+    preexec_functions+=(renlog_zsh_preexec)
+    
+    echo "Renlog zsh integration loaded (PID: $RENLOG_PID)"
+fi
+
+#==============================================================================
+# Helper functions for manual usage
+#==============================================================================
+
+# Check if running inside renlog
+function in_renlog() {{
+    [[ -n "$RENLOG_PID" ]]
+}}
+
+# Get current renlog directory
+function renlog_dir() {{
+    echo "$RENLOG_DIR"
+}}
+
+# Get current log file (latest.log symlink)
+function renlog_current_log() {{
+    if [[ -n "$RENLOG_DIR" ]] && [[ -L "$RENLOG_DIR/latest.log" ]]; then
+        echo "$RENLOG_DIR/latest.log"
+    fi
+}}
+
+"#);
 }

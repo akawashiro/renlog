@@ -113,6 +113,25 @@ impl CommandLogger {
         Ok(())
     }
 
+    pub fn end_command(&self, exit_status: Option<i32>) {
+        log::debug!("Ending current command with exit status: {:?}", exit_status);
+        
+        // Write exit status to log if we have an active file
+        if let Some(exit_status) = exit_status {
+            let mut current_file = self.current_log_file.lock().unwrap();
+            if let Some(ref mut file) = *current_file {
+                let status_msg = format!("\n[Command ended with exit status: {}]\n", exit_status);
+                if let Err(e) = file.write_all(status_msg.as_bytes()) {
+                    log::warn!("Failed to write exit status to command log: {}", e);
+                } else if let Err(e) = file.flush() {
+                    log::warn!("Failed to flush exit status to command log: {}", e);
+                }
+            }
+        }
+        
+        log::debug!("Current command ended");
+    }
+
     pub fn close_current_command(&self) {
         log::debug!("Closing current command log file");
         let mut current_file = self.current_log_file.lock().unwrap();

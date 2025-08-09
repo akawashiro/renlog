@@ -1,4 +1,5 @@
 use crate::command_logger::CommandLogger;
+use crate::command_markers;
 use std::fs::File;
 use std::io::{self, Read, Result, Write};
 
@@ -6,16 +7,16 @@ const BUFFER_SIZE: usize = 32 * 1024;
 
 
 
-// Command-aware input forwarding with command detection
+// Command-aware input forwarding with command marker detection
 pub fn forward_with_command_detection(
     mut input: File,
     mut output: File,
     command_logger: &CommandLogger,
 ) -> Result<()> {
-    log::debug!("Starting command-aware input forwarding");
+    log::debug!("Starting command-aware input forwarding with marker detection");
     let mut buffer = [0u8; BUFFER_SIZE];
     let mut total_bytes_forwarded = 0u64;
-    let mut line_buffer = Vec::new();
+    let mut data_buffer = Vec::new();
 
     loop {
         match input.read(&mut buffer) {
@@ -34,27 +35,50 @@ pub fn forward_with_command_detection(
                 output.write_all(data)?;
                 output.flush()?;
 
-                // Process data byte by byte to detect newlines (commands)
-                for &byte in data {
-                    line_buffer.push(byte);
+                // Add data to our buffer for marker detection
+                data_buffer.extend_from_slice(data);
 
-                    // On newline, we consider this a new command
-                    if byte == b'\n' {
-                        // Skip empty lines
-                        let line_content: Vec<u8> = line_buffer
-                            .iter()
-                            .filter(|&&b| b != b'\r' && b != b'\n')
-                            .copied()
-                            .collect();
-
-                        if !line_content.is_empty() {
-                            log::debug!("Detected new command, creating new log file");
+                // Try to decode command markers from the accumulated data
+                let (success, prefix, args) = command_markers::try_decode_bytes(&data_buffer);
+                
+                if success {
+                    log::debug!("Detected command marker with args: {:?}", args);
+                    
+                    // Process the command
+                    if !args.is_empty() {
+                        if args[0] == "end-command" {
+                            // Handle end-command marker
+                            let exit_status = if args.len() > 1 {
+                                args[1].parse::<i32>().ok()
+                            } else {
+                                None
+                            };
+                            log::info!("Ending command with exit status: {:?}", exit_status);
+                            command_logger.end_command(exit_status);
+                        } else {
+                            // Handle regular command start marker
+                            log::info!("Starting new command log for: {}", args.join(" "));
                             if let Err(e) = command_logger.start_new_command() {
                                 log::error!("Failed to start new command log: {}", e);
                             }
                         }
+                    }
 
-                        line_buffer.clear();
+                    // Keep any remaining data after the command marker for next iteration
+                    let marker_and_command_len = prefix.len() + 
+                        command_markers::COMMAND_MARKER.len() + 
+                        args.join(" ").len() + 1; // +1 for newline
+                    
+                    if marker_and_command_len < data_buffer.len() {
+                        data_buffer = data_buffer[marker_and_command_len..].to_vec();
+                    } else {
+                        data_buffer.clear();
+                    }
+                } else {
+                    // No marker found, keep last part of buffer in case marker spans reads
+                    let marker_len = command_markers::COMMAND_MARKER.len();
+                    if data_buffer.len() > marker_len {
+                        data_buffer = data_buffer[(data_buffer.len() - marker_len)..].to_vec();
                     }
                 }
 
