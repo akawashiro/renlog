@@ -15,6 +15,9 @@ use std::io::Result;
     long_about = "Renlog - Rust implementation of zenlog\nPhase 1 implementation - basic PTY and I/O forwarding"
 )]
 struct Args {
+    #[arg(long, help = "Directory path for renlog log files (mandatory)")]
+    renlog_log_dir: String,
+
     #[arg(long, help = "Path to log file for renlog debugging")]
     log_file: Option<String>,
 
@@ -37,7 +40,7 @@ async fn main() -> Result<()> {
     println!("Starting Renlog (Rust implementation of zenlog)...");
 
     // Create and initialize session
-    let mut session = Session::new()?;
+    let mut session = Session::new(&args.renlog_log_dir)?;
 
     // Start child process in PTY
     session.start_child()?;

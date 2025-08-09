@@ -17,24 +17,37 @@ pub struct Session {
     child: Option<Child>,
     original_termios: Option<Termios>,
     pid: u32,
+    renlog_log_dir: String,
 }
 
 impl Session {
-    pub fn new() -> Result<Self> {
+    pub fn new(renlog_log_dir: &str) -> Result<Self> {
         log::debug!("Creating new Session instance");
-        let temp_dir = env::var("TMPDIR").unwrap_or_else(|_| "/tmp".to_string());
         let pid = std::process::id();
         log::info!(
-            "Session initializing with PID={} temp_dir={}",
+            "Session initializing with PID={} renlog_log_dir={}",
             pid,
-            temp_dir
+            renlog_log_dir
         );
+
+        // Create the log directory if it doesn't exist
+        std::fs::create_dir_all(renlog_log_dir).map_err(|e| {
+            log::error!(
+                "Failed to create renlog log directory '{}': {}",
+                renlog_log_dir,
+                e
+            );
+            io::Error::other(format!(
+                "Failed to create renlog log directory '{}': {}",
+                renlog_log_dir, e
+            ))
+        })?;
 
         log::debug!("Creating PTY pair");
         let pty = PtyPair::new()?;
 
         log::debug!("Creating FIFO pair");
-        let mut fifos = FifoPair::new(&temp_dir, pid)?;
+        let mut fifos = FifoPair::new(renlog_log_dir, pid)?;
         fifos.open()?;
         log::info!(
             "FIFO pipes created and opened: forward={}, reverse={}",
@@ -67,6 +80,7 @@ impl Session {
             child: None,
             original_termios,
             pid,
+            renlog_log_dir: renlog_log_dir.to_string(),
         })
     }
 
@@ -82,11 +96,13 @@ impl Session {
 
         // Set environment variables that the shell integration would use
         cmd.env("RENLOG_PID", self.pid.to_string());
+        cmd.env("RENLOG_LOG_DIR", &self.renlog_log_dir);
         cmd.env("RENLOG_LOGGER_IN", self.fifos.forward_path_str());
         cmd.env("RENLOG_LOGGER_OUT", self.fifos.reverse_path_str());
         log::debug!(
-            "Set environment variables: RENLOG_PID={}, RENLOG_LOGGER_IN={}, RENLOG_LOGGER_OUT={}",
+            "Set environment variables: RENLOG_PID={}, RENLOG_LOG_DIR={}, RENLOG_LOGGER_IN={}, RENLOG_LOGGER_OUT={}",
             self.pid,
+            &self.renlog_log_dir,
             self.fifos.forward_path_str(),
             self.fifos.reverse_path_str()
         );
