@@ -2,6 +2,9 @@ use log::LevelFilter;
 use simplelog::{Config, WriteLogger};
 use std::io::{self, Result};
 use std::str::FromStr;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static LOGGING_ENABLED: AtomicBool = AtomicBool::new(false);
 
 pub fn init_logging(log_file: Option<&str>, log_level: &str) -> Result<()> {
     let level_filter = match LevelFilter::from_str(log_level) {
@@ -18,6 +21,7 @@ pub fn init_logging(log_file: Option<&str>, log_level: &str) -> Result<()> {
     match log_file {
         Some(file_path) => match init_file_logging(file_path, level_filter) {
             Ok(()) => {
+                LOGGING_ENABLED.store(true, Ordering::Relaxed);
                 log::info!("Renlog internal logging initialized to file: {}", file_path);
                 Ok(())
             }
@@ -27,10 +31,14 @@ pub fn init_logging(log_file: Option<&str>, log_level: &str) -> Result<()> {
                     file_path, e
                 );
                 eprintln!("Continuing without logging...");
+                init_null_logging()?;
                 Ok(())
             }
         },
-        None => Ok(()),
+        None => {
+            init_null_logging()?;
+            Ok(())
+        }
     }
 }
 
@@ -48,6 +56,16 @@ fn init_file_logging(file_path: &str, level: LevelFilter) -> Result<()> {
         .map_err(|e| io::Error::other(format!("Failed to initialize logger: {}", e)))?;
 
     Ok(())
+}
+
+fn init_null_logging() -> Result<()> {
+    log::set_max_level(LevelFilter::Off);
+    LOGGING_ENABLED.store(false, Ordering::Relaxed);
+    Ok(())
+}
+
+pub fn is_logging_enabled() -> bool {
+    LOGGING_ENABLED.load(Ordering::Relaxed)
 }
 
 pub fn log_function_entry(function_name: &str) {
