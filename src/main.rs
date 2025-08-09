@@ -7,6 +7,8 @@ mod logging;
 mod pty;
 mod session;
 
+use command_markers::{END_COMMAND_NAME, START_COMMAND_NAME};
+
 use chrono::Utc;
 use clap::{Parser, Subcommand};
 use session::Session;
@@ -154,7 +156,7 @@ function renlog_zsh_preexec() {{
     local cmd="$3" # Current command line.
     if [[ -n "$RENLOG_PID" ]]; then
         # Send command marker to renlog via invisible stdout
-        printf 'renlog-start-command %s\n' "$cmd"
+        printf '{} %s\n' "$cmd"
         # Move cursor up and clear the line to make it invisible
         echo -ne "\e[A\e[2K"
     fi
@@ -165,7 +167,7 @@ function renlog_zsh_postexec() {{
     local last_status=$?
     if [[ -n "$RENLOG_PID" ]]; then
         # Send end command marker to renlog via invisible stdout
-        printf 'renlog-end-command %d\n' "$last_status"
+        printf '{} %d\n' "$last_status"
         # Move cursor up and clear the line to make it invisible
         echo -ne "\e[A\e[2K"
     fi
@@ -188,6 +190,7 @@ if [[ -n "$RENLOG_PID" ]]; then
     echo "Renlog zsh integration loaded (PID: $RENLOG_PID)"
 fi
 
-"#
+"#,
+        START_COMMAND_NAME, END_COMMAND_NAME
     );
 }

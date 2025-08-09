@@ -1,5 +1,5 @@
 use crate::command_logger::CommandLogger;
-use crate::command_markers;
+use crate::command_markers::{self, END_COMMAND_NAME, START_COMMAND_NAME};
 use std::fs::File;
 use std::io::{self, Read, Result, Write};
 
@@ -44,7 +44,7 @@ pub fn forward_with_command_detection(
 
                     // Process the command
                     if !args.is_empty() {
-                        if args[0] == "renlog-end-command" {
+                        if args[0] == END_COMMAND_NAME {
                             // Handle renlog-end-command marker
                             let exit_status = if args.len() > 1 {
                                 args[1].parse::<i32>().ok()
@@ -53,7 +53,7 @@ pub fn forward_with_command_detection(
                             };
                             log::info!("Ending command with exit status: {:?}", exit_status);
                             command_logger.end_command(exit_status);
-                        } else if args[0] == "renlog-start-command" {
+                        } else if args[0] == START_COMMAND_NAME {
                             // Handle renlog-start-command marker
                             let command_str = if args.len() > 1 {
                                 args[1..].join(" ")

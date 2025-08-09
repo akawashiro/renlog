@@ -5,6 +5,10 @@ pub const COMMAND_MARKER: &str = "\x1b\x01\x09\x07\x03\x02\x05renlog:";
 pub const ESCAPE_CHAR: u8 = 0x1b;
 pub const SEPARATOR_CHAR: u8 = b' ';
 
+/// Command names used in shell integration
+pub const START_COMMAND_NAME: &str = "renlog-start-command";
+pub const END_COMMAND_NAME: &str = "renlog-end-command";
+
 /// Convert a hex digit to its integer value
 fn hex_to_int(ch: u8) -> Result<u8, String> {
     match ch {
