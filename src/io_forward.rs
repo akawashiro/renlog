@@ -141,10 +141,13 @@ pub fn unified_pty_reader(
                 if !command_buffer.is_empty() {
                     if let Some(ref cmd) = current_command {
                         log::info!("Saving incomplete command buffer for: {}", cmd);
-                        if let Err(e) =
-                            command_logger::save_command_log(log_dir, cmd, &command_buffer, None)
-                        {
-                            log::error!("Failed to save incomplete command log: {}", e);
+                        match command_logger::save_command_log(log_dir, cmd, &command_buffer, None) {
+                            Ok(log_file_path) => {
+                                log::info!("Saved incomplete command log to: {}", log_file_path);
+                            }
+                            Err(e) => {
+                                log::error!("Failed to save incomplete command log: {}", e);
+                            }
                         }
                     }
                 }
@@ -215,13 +218,18 @@ pub fn unified_pty_reader(
                         // Save previous command if exists
                         if let Some(ref prev_cmd) = current_command {
                             log::info!("Saving previous command log: {}", prev_cmd);
-                            if let Err(e) = command_logger::save_command_log(
+                            match command_logger::save_command_log(
                                 log_dir,
                                 prev_cmd,
                                 &command_buffer,
                                 None,
                             ) {
-                                log::error!("Failed to save previous command log: {}", e);
+                                Ok(log_file_path) => {
+                                    log::info!("Saved previous command log to: {}", log_file_path);
+                                }
+                                Err(e) => {
+                                    log::error!("Failed to save previous command log: {}", e);
+                                }
                             }
                         }
 
@@ -264,13 +272,18 @@ pub fn unified_pty_reader(
                                 cmd,
                                 exit_status
                             );
-                            if let Err(e) = command_logger::save_command_log(
+                            match command_logger::save_command_log(
                                 log_dir,
                                 cmd,
                                 &command_buffer,
                                 exit_status,
                             ) {
-                                log::error!("Failed to save command log: {}", e);
+                                Ok(log_file_path) => {
+                                    log::info!("Saved command log to: {}", log_file_path);
+                                }
+                                Err(e) => {
+                                    log::error!("Failed to save command log: {}", e);
+                                }
                             }
                         }
 

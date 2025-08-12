@@ -34,6 +34,14 @@ function renlog_zsh_postexec() {{
         printf '{} %d\n' "$last_status"
         # Move cursor up and clear the line to make it invisible
         echo -ne "\e[A\e[2K"
+        
+        # Display current log file if available
+        if [[ -n "$RENLOG_LOG_FILE" && -f "$RENLOG_LOG_FILE" ]]; then
+            local current_log="$(cat "$RENLOG_LOG_FILE" 2>/dev/null)"
+            if [[ -n "$current_log" ]]; then
+                echo "[$current_log]"
+            fi
+        fi
     fi
 }}
 

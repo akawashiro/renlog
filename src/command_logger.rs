@@ -90,12 +90,23 @@ fn create_latest_symlink(log_dir: &str, filename: &str) -> Result<()> {
     Ok(())
 }
 
+/// Update the current log file tracking file
+fn update_current_log_file(log_dir: &str, log_file_path: &str) -> Result<()> {
+    let current_log_marker = Path::new(log_dir).join(".renlog_current_log");
+    std::fs::write(&current_log_marker, log_file_path).map_err(|e| {
+        log::warn!("Failed to update current log file marker: {}", e);
+        e
+    })?;
+    log::debug!("Updated current log file marker: {}", log_file_path);
+    Ok(())
+}
+
 pub fn save_command_log(
     log_dir: &str,
     command: &str,
     data: &[u8],
     exit_status: Option<i32>,
-) -> Result<()> {
+) -> Result<String> {
     log::debug!(
         "Saving command log for '{}', data size: {} bytes, exit status: {:?}",
         command,
@@ -168,7 +179,14 @@ pub fn save_command_log(
         data.len()
     );
 
-    Ok(())
+    let log_file_path = filepath.to_string_lossy().to_string();
+    
+    // Update the current log file tracking
+    if let Err(e) = update_current_log_file(log_dir, &log_file_path) {
+        log::warn!("Failed to update current log file tracking: {}", e);
+    }
+
+    Ok(log_file_path)
 }
 
 #[cfg(test)]
