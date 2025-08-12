@@ -64,7 +64,7 @@ pub fn save_command_log(
 
     let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S_%3f").to_string();
     let safe_command = sanitize_for_filename(command);
-    let filename = format!("{}_cmd_{}.log", timestamp, safe_command);
+    let filename = format!("{}_{}.log", timestamp, safe_command);
     let filepath = PathBuf::from(log_dir).join(&filename);
 
     log::info!(
