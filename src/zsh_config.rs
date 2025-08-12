@@ -1,4 +1,6 @@
-use crate::command_markers::{END_COMMAND_NAME, START_COMMAND_NAME};
+/// Command names used in shell integration
+pub const START_COMMAND_NAME: &str = "renlog-start-command";
+pub const END_COMMAND_NAME: &str = "renlog-end-command";
 
 pub fn show_zsh_rc() {
     println!(

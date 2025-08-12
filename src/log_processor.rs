@@ -1,4 +1,4 @@
-use crate::command_markers::{END_COMMAND_NAME, START_COMMAND_NAME};
+use crate::zsh_config::{END_COMMAND_NAME, START_COMMAND_NAME};
 use regex::Regex;
 use std::sync::OnceLock;
 
