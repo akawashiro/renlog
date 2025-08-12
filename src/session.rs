@@ -101,18 +101,14 @@ impl Session {
 
         // Set environment variables that the shell integration would use
         cmd.env("RENLOG_PID", self.pid.to_string());
-        cmd.env("RENLOG_DIR", &self.renlog_dir);
-        cmd.env("RENLOG_LOGGER_OUT", self.fifos.reverse_path_str());
 
         // Set up the current log file marker path for shell integration
         let current_log_marker = format!("{}/.renlog_current_log", &self.renlog_dir);
         cmd.env("RENLOG_LOG_FILE", &current_log_marker);
 
         log::debug!(
-            "Set environment variables: RENLOG_PID={}, RENLOG_DIR={}, RENLOG_LOGGER_OUT={}, RENLOG_LOG_FILE={}",
+            "Set environment variables: RENLOG_PID={}, RENLOG_LOG_FILE={}",
             self.pid,
-            &self.renlog_dir,
-            self.fifos.reverse_path_str(),
             &current_log_marker
         );
 
