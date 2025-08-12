@@ -1,7 +1,9 @@
+use crate::command_markers::{END_COMMAND_NAME, START_COMMAND_NAME};
 use regex::Regex;
 use std::sync::OnceLock;
 
 static ANSI_REGEX: OnceLock<Regex> = OnceLock::new();
+static COMMAND_MARKER_REGEX: OnceLock<Regex> = OnceLock::new();
 
 fn get_ansi_regex() -> &'static Regex {
     ANSI_REGEX.get_or_init(|| {
@@ -39,6 +41,18 @@ fn get_ansi_regex() -> &'static Regex {
     })
 }
 
+fn get_command_marker_regex() -> &'static Regex {
+    COMMAND_MARKER_REGEX.get_or_init(|| {
+        let pattern = format!(
+            r"(?m)^{}\s.*$\n?|(?m)^{}\s.*$\n?",
+            regex::escape(START_COMMAND_NAME),
+            regex::escape(END_COMMAND_NAME)
+        );
+        Regex::new(&pattern).expect("Failed to compile command marker regex")
+    })
+}
+
+#[allow(dead_code)]
 pub fn strip_ansi_codes(input: &[u8]) -> Vec<u8> {
     let input_str = String::from_utf8_lossy(input);
 
@@ -46,6 +60,55 @@ pub fn strip_ansi_codes(input: &[u8]) -> Vec<u8> {
     let cleaned = regex.replace_all(&input_str, "");
 
     cleaned.into_owned().into_bytes()
+}
+
+#[allow(dead_code)]
+pub fn strip_command_markers(input: &[u8]) -> Vec<u8> {
+    let input_str = String::from_utf8_lossy(input);
+
+    let regex = get_command_marker_regex();
+    let cleaned = regex.replace_all(&input_str, "");
+
+    cleaned.into_owned().into_bytes()
+}
+
+pub fn truncate_after_end_command(input: &[u8]) -> Vec<u8> {
+    let input_str = String::from_utf8_lossy(input);
+
+    // Find the first occurrence of renlog-end-command and truncate everything after it
+    if let Some(pos) = input_str.find(END_COMMAND_NAME) {
+        // Find the end of the line containing the end command
+        if let Some(newline_pos) = input_str[pos..].find('\n') {
+            let truncate_pos = pos + newline_pos + 1; // Include the newline
+            input_str[..truncate_pos].as_bytes().to_vec()
+        } else {
+            // No newline after end command, truncate at the end command
+            input_str[..pos].as_bytes().to_vec()
+        }
+    } else {
+        // No end command found, return original input
+        input.to_vec()
+    }
+}
+
+pub fn strip_ansi_codes_and_command_markers(input: &[u8]) -> Vec<u8> {
+    let input_str = String::from_utf8_lossy(input);
+
+    let ansi_regex = get_ansi_regex();
+    let ansi_cleaned = ansi_regex.replace_all(&input_str, "");
+
+    let command_regex = get_command_marker_regex();
+    let fully_cleaned = command_regex.replace_all(&ansi_cleaned, "");
+
+    fully_cleaned.into_owned().into_bytes()
+}
+
+pub fn process_command_log_content(input: &[u8]) -> Vec<u8> {
+    // First truncate after end command to remove any unwanted content
+    let truncated = truncate_after_end_command(input);
+
+    // Then strip ANSI codes and command markers
+    strip_ansi_codes_and_command_markers(&truncated)
 }
 
 #[cfg(test)]
@@ -92,5 +155,99 @@ mod tests {
         let input = b"Text\x08Backspace";
         let expected = b"TextBackspace";
         assert_eq!(strip_ansi_codes(input), expected);
+    }
+
+    #[test]
+    fn test_strip_start_command_marker() {
+        let input = b"Normal output\nrenlog-start-command ls -la\nMore normal output";
+        let expected = b"Normal output\nMore normal output";
+        assert_eq!(strip_command_markers(input), expected);
+    }
+
+    #[test]
+    fn test_strip_end_command_marker() {
+        let input = b"Command output\nrenlog-end-command 0\nMore output";
+        let expected = b"Command output\nMore output";
+        assert_eq!(strip_command_markers(input), expected);
+    }
+
+    #[test]
+    fn test_strip_both_command_markers() {
+        let input =
+            b"Before\nrenlog-start-command echo test\nActual output\nrenlog-end-command 0\nAfter";
+        let expected = b"Before\nActual output\nAfter";
+        assert_eq!(strip_command_markers(input), expected);
+    }
+
+    #[test]
+    fn test_strip_command_markers_with_exit_codes() {
+        let input = b"Output\nrenlog-end-command 1\nrenlog-end-command 127\nMore output";
+        let expected = b"Output\nMore output";
+        assert_eq!(strip_command_markers(input), expected);
+    }
+
+    #[test]
+    fn test_strip_ansi_and_command_markers_combined() {
+        let input = b"\x1b[31mRed text\x1b[0m\nrenlog-start-command echo test\nNormal output\nrenlog-end-command 0\n\x1b[32mGreen text\x1b[0m";
+        let expected = b"Red text\nNormal output\nGreen text";
+        assert_eq!(strip_ansi_codes_and_command_markers(input), expected);
+    }
+
+    #[test]
+    fn test_preserve_normal_text_with_command_filtering() {
+        let input = b"Normal text without any markers or escape codes";
+        let expected = b"Normal text without any markers or escape codes";
+        assert_eq!(strip_command_markers(input), expected);
+        assert_eq!(strip_ansi_codes_and_command_markers(input), expected);
+    }
+
+    #[test]
+    fn test_command_markers_at_line_boundaries() {
+        let input = b"renlog-start-command test\nContent\nrenlog-end-command 0";
+        let expected = b"Content\n";
+        assert_eq!(strip_command_markers(input), expected);
+    }
+
+    #[test]
+    fn test_truncate_after_end_command_with_extra_content() {
+        let input =
+            b"Command output\nrenlog-end-command 0\n[/tmp/renlog/file.log]\nExtra unwanted content";
+        let expected = b"Command output\nrenlog-end-command 0\n";
+        assert_eq!(truncate_after_end_command(input), expected);
+    }
+
+    #[test]
+    fn test_truncate_after_end_command_no_newline() {
+        let input = b"Command output\nrenlog-end-command 0[/tmp/renlog/file.log]";
+        let expected = b"Command output\n";
+        assert_eq!(truncate_after_end_command(input), expected);
+    }
+
+    #[test]
+    fn test_truncate_after_end_command_not_found() {
+        let input = b"Normal command output\nNo end marker here";
+        let expected = b"Normal command output\nNo end marker here";
+        assert_eq!(truncate_after_end_command(input), expected);
+    }
+
+    #[test]
+    fn test_truncate_after_end_command_multiple_occurrences() {
+        let input = b"Content\nrenlog-end-command 0\nUnwanted\nrenlog-end-command 1\nMore unwanted";
+        let expected = b"Content\nrenlog-end-command 0\n";
+        assert_eq!(truncate_after_end_command(input), expected);
+    }
+
+    #[test]
+    fn test_process_command_log_content_complete() {
+        let input = b"\x1b[31mRed text\x1b[0m\nrenlog-start-command echo test\nActual output\nrenlog-end-command 0\n[/tmp/renlog/unwanted.log]\nExtra content";
+        let expected = b"Red text\nActual output\n";
+        assert_eq!(process_command_log_content(input), expected);
+    }
+
+    #[test]
+    fn test_process_command_log_content_real_scenario() {
+        let input = b"Cargo.lock  CLAUDE.md  README.md  target/     test_sigwinch.sh\nCargo.toml  LICENSE    src/       test_logs/  zenlog/\nrenlog-end-command 0\n[/tmp/renlog/20250812_130850_236_cat-_tmp_renlog_20250812_130843_139_ls--F---color_auto.log.log]";
+        let expected = b"Cargo.lock  CLAUDE.md  README.md  target/     test_sigwinch.sh\nCargo.toml  LICENSE    src/       test_logs/  zenlog/\n";
+        assert_eq!(process_command_log_content(input), expected);
     }
 }

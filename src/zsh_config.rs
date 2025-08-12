@@ -19,10 +19,12 @@ pub fn show_zsh_rc() {
 function renlog_zsh_preexec() {{
     local cmd="$3" # Current command line.
     if [[ -n "$RENLOG_PID" ]]; then
-        # Send command marker to renlog via invisible stdout
+        # Send command marker to renlog via invisible stdout with better terminal handling
         printf '{} %s\n' "$cmd"
-        # Move cursor up and clear the line to make it invisible
-        echo -ne "\e[A\e[2K"
+        # Use more reliable cursor manipulation with carriage return + clear line
+        printf '\r\e[K'
+        # Additional fallback: move cursor up and clear line if previous method insufficient
+        printf '\e[1A\e[2K'
     fi
 }}
 
@@ -30,10 +32,12 @@ function renlog_zsh_preexec() {{
 function renlog_zsh_postexec() {{
     local last_status=$?
     if [[ -n "$RENLOG_PID" ]]; then
-        # Send end command marker to renlog via invisible stdout
+        # Send end command marker to renlog via invisible stdout with better terminal handling
         printf '{} %d\n' "$last_status"
-        # Move cursor up and clear the line to make it invisible
-        echo -ne "\e[A\e[2K"
+        # Use more reliable cursor manipulation with carriage return + clear line
+        printf '\r\e[K'
+        # Additional fallback: move cursor up and clear line if previous method insufficient
+        printf '\e[1A\e[2K'
         
         # Display current log file if available
         if [[ -n "$RENLOG_LOG_FILE" && -f "$RENLOG_LOG_FILE" ]]; then

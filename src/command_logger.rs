@@ -159,8 +159,8 @@ pub fn save_command_log(
         e
     })?;
 
-    // Write the filtered command output
-    let filtered_data = ansi_filter::strip_ansi_codes(data);
+    // Write the filtered command output (truncate after end command, then strip ANSI codes and command markers)
+    let filtered_data = ansi_filter::process_command_log_content(data);
     file.write_all(&filtered_data).map_err(|e| {
         log::error!("Failed to write command data to log: {}", e);
         e
