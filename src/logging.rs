@@ -90,9 +90,7 @@ pub fn init_logging(log_file: &str, log_level: &str) -> Result<()> {
     let level_filter = match LevelFilter::from_str(log_level) {
         Ok(level) => level,
         Err(_) => {
-            eprintln!(
-                "Warning: Invalid log level '{log_level}', defaulting to 'info'"
-            );
+            eprintln!("Warning: Invalid log level '{log_level}', defaulting to 'info'");
             LevelFilter::Info
         }
     };
@@ -104,9 +102,7 @@ pub fn init_logging(log_file: &str, log_level: &str) -> Result<()> {
             Ok(())
         }
         Err(e) => {
-            eprintln!(
-                "Warning: Failed to initialize file logging to '{log_file}': {e}"
-            );
+            eprintln!("Warning: Failed to initialize file logging to '{log_file}': {e}");
             eprintln!("Continuing without logging...");
             init_null_logging()?;
             Ok(())
@@ -125,8 +121,7 @@ fn init_file_logging(file_path: &str, level: LevelFilter) -> Result<()> {
     LOGGER.set_file(file);
     LOGGER.set_level(level);
 
-    log::set_logger(&LOGGER)
-        .map_err(|e| io::Error::other(format!("Failed to set logger: {e}")))?;
+    log::set_logger(&LOGGER).map_err(|e| io::Error::other(format!("Failed to set logger: {e}")))?;
 
     log::set_max_level(level);
 

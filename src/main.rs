@@ -13,7 +13,6 @@ mod zsh_config;
 
 use chrono::Utc;
 use clap::{Parser, Subcommand};
-use command_logger::truncate_filename_to_limit;
 use emergency_shell::EmergencyShell;
 use session::Session;
 use signals::SignalHandler;
@@ -69,8 +68,7 @@ async fn main() -> Result<()> {
 async fn run_log_session(renlog_dir: &str, log_level: &str) -> Result<()> {
     // Construct the log file path in the renlog log directory
     let timestamp = Utc::now().format("%Y%m%d_%H%M%S_%3f").to_string();
-    let log_filename_raw = format!("renlog_{timestamp}.log");
-    let log_filename = truncate_filename_to_limit(&log_filename_raw);
+    let log_filename = format!("renlog_{timestamp}.log");
     let log_file_path = Path::new(renlog_dir).join(&log_filename);
     let log_file_str = log_file_path.to_string_lossy();
 
@@ -109,8 +107,7 @@ async fn run_log_session(renlog_dir: &str, log_level: &str) -> Result<()> {
             eprintln!("Renlog failed to start: {e}");
 
             // Fall back to emergency shell
-            match emergency_shell.start_with_error(&format!("Renlog initialization failed: {e}"))
-            {
+            match emergency_shell.start_with_error(&format!("Renlog initialization failed: {e}")) {
                 Ok(status) => {
                     let exit_code = status.code().unwrap_or(1);
                     log::info!("Emergency shell exited with code: {exit_code}");

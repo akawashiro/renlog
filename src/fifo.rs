@@ -14,9 +14,7 @@ pub struct FifoPair {
 
 impl FifoPair {
     pub fn new(temp_dir: &str, pid: u32) -> Result<Self> {
-        log::debug!(
-            "Creating FIFO pair for PID {pid} in temp_dir: {temp_dir}"
-        );
+        log::debug!("Creating FIFO pair for PID {pid} in temp_dir: {temp_dir}");
         let forward_path = PathBuf::from(format!("{temp_dir}/renlog.{pid}.f.pipe"));
         let reverse_path = PathBuf::from(format!("{temp_dir}/renlog.{pid}.r.pipe"));
 

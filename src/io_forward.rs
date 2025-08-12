@@ -99,9 +99,7 @@ pub fn forward_with_command_detection(mut input: File, mut output: File) -> Resu
         }
     }
 
-    log::info!(
-        "forward_with_command_detection completed: {total_bytes_forwarded} bytes forwarded"
-    );
+    log::info!("forward_with_command_detection completed: {total_bytes_forwarded} bytes forwarded");
     Ok(())
 }
 
@@ -254,9 +252,7 @@ pub fn unified_pty_reader(
                         };
 
                         if let Some(ref cmd) = current_command {
-                            log::info!(
-                                "Ending command '{cmd}' with exit status: {exit_status:?}"
-                            );
+                            log::info!("Ending command '{cmd}' with exit status: {exit_status:?}");
                             match command_logger::save_command_log(
                                 log_dir,
                                 cmd,
@@ -304,9 +300,7 @@ pub fn unified_pty_reader(
                     log::trace!("unified_pty_reader: interrupted, continuing");
                     continue;
                 }
-                log::error!(
-                    "unified_pty_reader: I/O error after {total_bytes_read} bytes: {e}"
-                );
+                log::error!("unified_pty_reader: I/O error after {total_bytes_read} bytes: {e}");
                 return Err(e);
             }
         }

@@ -9,6 +9,7 @@ use std::env;
 use std::fs::File;
 use std::io::{self, Result};
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::process::CommandExt;
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::thread;
@@ -29,15 +30,11 @@ impl Session {
     pub fn new(renlog_dir: &str) -> Result<Self> {
         log::debug!("Creating new Session instance");
         let pid = std::process::id();
-        log::info!(
-            "Session initializing with PID={pid} renlog_dir={renlog_dir}"
-        );
+        log::info!("Session initializing with PID={pid} renlog_dir={renlog_dir}");
 
         // Create the log directory if it doesn't exist
         std::fs::create_dir_all(renlog_dir).map_err(|e| {
-            log::error!(
-                "Failed to create renlog log directory '{renlog_dir}': {e}"
-            );
+            log::error!("Failed to create renlog log directory '{renlog_dir}': {e}");
             io::Error::other(format!(
                 "Failed to create renlog log directory '{renlog_dir}': {e}"
             ))
@@ -130,6 +127,23 @@ impl Session {
         cmd.stdin(unsafe { Stdio::from_raw_fd(stdin_fd) });
         cmd.stdout(unsafe { Stdio::from_raw_fd(stdout_fd) });
         cmd.stderr(unsafe { Stdio::from_raw_fd(stderr_fd) });
+
+        // Set up process group handling for proper signal delivery
+        unsafe {
+            cmd.pre_exec(|| {
+                // Create a new process group for the child process
+                // This ensures proper signal handling and terminal control
+                let result = libc::setsid();
+                if result == -1 {
+                    eprintln!(
+                        "WARNING: Failed to create new session for child: errno {}",
+                        std::io::Error::last_os_error()
+                    );
+                }
+                Ok(())
+            });
+        }
+
         log::debug!(
             "Configured child stdio to use duplicated PTY slave fds: stdin={stdin_fd}, stdout={stdout_fd}, stderr={stderr_fd}"
         );

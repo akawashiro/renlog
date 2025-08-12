@@ -7,7 +7,7 @@ use std::process::Child;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::pty::propagate_terminal_size;
+use crate::pty::{propagate_terminal_size, propagate_terminal_size_sync};
 
 pub struct SessionCallbacks {
     pub child: Arc<Mutex<Option<Child>>>,
@@ -42,16 +42,51 @@ impl SignalHandler {
         while let Some(signal) = self.signals.next().await {
             match signal {
                 SIGWINCH => {
-                    log::debug!("Caught SIGWINCH signal");
+                    log::info!("Caught SIGWINCH signal - handling terminal resize");
 
+                    // First, forward the signal to the child process
+                    let child_guard = callbacks.child.lock().await;
+                    if let Some(child) = child_guard.as_ref() {
+                        let child_pid = child.id() as i32;
+                        log::info!("Forwarding SIGWINCH to child process PID: {child_pid}");
+
+                        // Use libc::kill to send SIGWINCH to child process
+                        let result = unsafe { libc::kill(child_pid, libc::SIGWINCH) };
+                        if result != 0 {
+                            log::warn!(
+                                "Failed to forward SIGWINCH to child process PID {}: errno {}",
+                                child_pid,
+                                result
+                            );
+                        } else {
+                            log::info!(
+                                "SIGWINCH forwarded to child process PID {} successfully",
+                                child_pid
+                            );
+                        }
+                    } else {
+                        log::debug!("No child process to forward SIGWINCH to");
+                    }
+                    drop(child_guard);
+
+                    // Then, propagate terminal size to our PTY master
                     let master_fd_guard = master_fd.lock().await;
                     if let Some(fd) = *master_fd_guard {
                         log::debug!("Propagating terminal size to PTY master fd: {fd}");
 
-                        if let Err(e) = propagate_terminal_size(libc::STDIN_FILENO, fd) {
-                            log::error!("Failed to propagate terminal size: {e}");
+                        // Try synchronous propagation first for immediate response
+                        if let Err(e) = propagate_terminal_size_sync(libc::STDIN_FILENO, fd) {
+                            log::error!("Synchronous terminal size propagation failed: {e}");
+                            // Fall back to async propagation
+                            if let Err(e) = propagate_terminal_size(libc::STDIN_FILENO, fd) {
+                                log::error!("Failed to propagate terminal size: {e}");
+                            } else {
+                                log::info!(
+                                    "Terminal size propagated successfully (async fallback)"
+                                );
+                            }
                         } else {
-                            log::info!("Terminal size propagated successfully");
+                            log::info!("Terminal size propagated successfully (sync)");
                         }
                     } else {
                         log::warn!("No PTY master fd available for terminal size propagation");

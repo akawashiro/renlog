@@ -21,7 +21,7 @@ fn sanitize_for_filename(command: &str) -> String {
 
 /// Truncate filename to ensure it doesn't exceed MAX_FILENAME_LENGTH characters
 /// Preserves the file extension if present
-pub fn truncate_filename_to_limit(filename: &str) -> String {
+fn truncate_filename_to_limit(filename: &str) -> String {
     if filename.len() <= MAX_FILENAME_LENGTH {
         return filename.to_string();
     }
@@ -68,9 +68,7 @@ pub fn ensure_log_directory(log_dir: &str) -> Result<()> {
     log::debug!("Ensuring command log directory exists: {log_dir}");
 
     std::fs::create_dir_all(log_dir).map_err(|e| {
-        log::error!(
-            "Failed to create command log directory '{log_dir}': {e}"
-        );
+        log::error!("Failed to create command log directory '{log_dir}': {e}");
         std::io::Error::other(format!(
             "Failed to create command log directory '{log_dir}': {e}"
         ))
