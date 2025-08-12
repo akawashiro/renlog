@@ -26,9 +26,7 @@ impl PtyPair {
                     size
                 }
                 Err(e) => {
-                    log::warn!(
-                        "Failed to get terminal size from stdin: {e}, using defaults"
-                    );
+                    log::warn!("Failed to get terminal size from stdin: {e}, using defaults");
                     Winsize {
                         ws_row: 24,
                         ws_col: 80,
@@ -177,9 +175,7 @@ pub fn set_window_size(fd: RawFd, winsize: &Winsize) -> Result<()> {
 }
 
 pub fn propagate_terminal_size(from_fd: RawFd, to_fd: RawFd) -> Result<()> {
-    log::debug!(
-        "Propagating terminal size from fd {from_fd} to fd {to_fd}"
-    );
+    log::debug!("Propagating terminal size from fd {from_fd} to fd {to_fd}");
 
     let winsize = get_window_size(from_fd)?;
     set_window_size(to_fd, &winsize)?;
@@ -188,6 +184,22 @@ pub fn propagate_terminal_size(from_fd: RawFd, to_fd: RawFd) -> Result<()> {
         "Terminal size propagated successfully from fd {} to fd {} ({}x{})",
         from_fd,
         to_fd,
+        winsize.ws_col,
+        winsize.ws_row
+    );
+
+    Ok(())
+}
+
+pub fn propagate_terminal_size_sync(from_fd: RawFd, to_fd: RawFd) -> Result<()> {
+    // Synchronous version for immediate terminal resize handling
+    // This bypasses async logging to ensure immediate response
+    let winsize = get_window_size(from_fd)?;
+    set_window_size(to_fd, &winsize)?;
+
+    // Use log::debug for output that respects log level configuration
+    log::debug!(
+        "Terminal size propagated synchronously: {}x{}",
         winsize.ws_col,
         winsize.ws_row
     );
