@@ -8,7 +8,7 @@ use nix::unistd;
 use std::env;
 use std::fs::File;
 use std::io::{self, Result};
-use std::os::unix::io::{AsRawFd, FromRawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::process::{Child, Command, Stdio};
 use std::thread;
 
@@ -254,6 +254,10 @@ impl Session {
             log::warn!("wait_for_child called but no child process exists");
             Ok(0)
         }
+    }
+
+    pub fn get_master_fd(&self) -> RawFd {
+        self.pty.master_fd()
     }
 }
 

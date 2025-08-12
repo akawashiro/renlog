@@ -6,15 +6,19 @@ mod io_forward;
 mod logging;
 mod pty;
 mod session;
+mod signals;
 mod symlink_utils;
 mod zsh_config;
 
 use chrono::Utc;
 use clap::{Parser, Subcommand};
 use session::Session;
+use signals::SignalHandler;
 use std::io::Result;
 use std::path::Path;
+use std::sync::Arc;
 use symlink_utils::create_or_update_symlink;
+use tokio::sync::Mutex;
 use zsh_config::show_zsh_rc;
 
 #[derive(Parser)]
@@ -91,9 +95,25 @@ async fn run_log_session(renlog_dir: &str, log_level: &str) -> Result<()> {
 
     session.start_forwarders()?;
 
+    // Set up signal handling for SIGWINCH
+    let master_fd = Arc::new(Mutex::new(Some(session.get_master_fd())));
+    let signal_handler = SignalHandler::new()?;
+
+    // Spawn signal handler task
+    let signal_task = tokio::spawn(signal_handler.handle_signals(master_fd.clone()));
+
     println!("Session initialized. Type 'exit' to quit.");
 
     let exit_code = session.wait_for_child()?;
+
+    // Clear the master fd to stop signal handling
+    {
+        let mut fd_guard = master_fd.blocking_lock();
+        *fd_guard = None;
+    }
+
+    // Cancel signal handler task
+    signal_task.abort();
 
     log::info!("Renlog session ended with exit code: {}", exit_code);
     println!("Renlog session ended with exit code: {exit_code}");
