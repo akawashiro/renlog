@@ -11,7 +11,7 @@ pub struct EmergencyShell {
 impl EmergencyShell {
     pub fn new() -> Self {
         let shell = env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
-        log::info!("Emergency shell initialized with: {}", shell);
+        log::info!("Emergency shell initialized with: {shell}");
 
         EmergencyShell {
             shell_command: shell,
@@ -32,8 +32,8 @@ impl EmergencyShell {
 
     /// Start emergency shell with a specific error message
     pub fn start_with_error(&self, error_msg: &str) -> Result<ExitStatus> {
-        log::error!("Emergency shell triggered by error: {}", error_msg);
-        eprintln!("ERROR: {}", error_msg);
+        log::error!("Emergency shell triggered by error: {error_msg}");
+        eprintln!("ERROR: {error_msg}");
         eprintln!("Falling back to emergency shell...");
 
         self.start()

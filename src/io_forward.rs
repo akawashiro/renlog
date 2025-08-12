@@ -16,13 +16,12 @@ pub fn forward_with_command_detection(mut input: File, mut output: File) -> Resu
         match input.read(&mut buffer) {
             Ok(0) => {
                 log::debug!(
-                    "forward_with_command_detection: EOF reached, total bytes forwarded: {}",
-                    total_bytes_forwarded
+                    "forward_with_command_detection: EOF reached, total bytes forwarded: {total_bytes_forwarded}"
                 );
                 break; // EOF
             }
             Ok(n) => {
-                log::trace!("forward_with_command_detection: read {} bytes", n);
+                log::trace!("forward_with_command_detection: read {n} bytes");
                 let data = &buffer[..n];
 
                 // Write data to output immediately
@@ -36,7 +35,7 @@ pub fn forward_with_command_detection(mut input: File, mut output: File) -> Resu
                 let (success, prefix, args) = command_markers::try_decode_bytes(&data_buffer);
 
                 if success {
-                    log::debug!("Detected command marker with args: {:?}", args);
+                    log::debug!("Detected command marker with args: {args:?}");
 
                     // Process the command markers but don't do any logging
                     // The unified_pty_reader handles all command logging
@@ -48,8 +47,7 @@ pub fn forward_with_command_detection(mut input: File, mut output: File) -> Resu
                                 None
                             };
                             log::info!(
-                                "Detected end command marker with exit status: {:?}",
-                                exit_status
+                                "Detected end command marker with exit status: {exit_status:?}"
                             );
                         } else if args[0] == START_COMMAND_NAME {
                             let command_str = if args.len() > 1 {
@@ -57,7 +55,7 @@ pub fn forward_with_command_detection(mut input: File, mut output: File) -> Resu
                             } else {
                                 "unknown".to_string()
                             };
-                            log::info!("Detected start command marker for: {}", command_str);
+                            log::info!("Detected start command marker for: {command_str}");
                         }
                     }
 
@@ -94,9 +92,7 @@ pub fn forward_with_command_detection(mut input: File, mut output: File) -> Resu
                     continue;
                 }
                 log::error!(
-                    "forward_with_command_detection: I/O error after {} bytes: {}",
-                    total_bytes_forwarded,
-                    e
+                    "forward_with_command_detection: I/O error after {total_bytes_forwarded} bytes: {e}"
                 );
                 return Err(e);
             }
@@ -104,8 +100,7 @@ pub fn forward_with_command_detection(mut input: File, mut output: File) -> Resu
     }
 
     log::info!(
-        "forward_with_command_detection completed: {} bytes forwarded",
-        total_bytes_forwarded
+        "forward_with_command_detection completed: {total_bytes_forwarded} bytes forwarded"
     );
     Ok(())
 }
@@ -133,21 +128,20 @@ pub fn unified_pty_reader(
         match input.read(&mut buffer) {
             Ok(0) => {
                 log::debug!(
-                    "unified_pty_reader: EOF reached, total bytes read: {}, stdout_errors: {}, forward_pipe_errors: {}",
-                    total_bytes_read, stdout_errors, forward_pipe_errors
+                    "unified_pty_reader: EOF reached, total bytes read: {total_bytes_read}, stdout_errors: {stdout_errors}, forward_pipe_errors: {forward_pipe_errors}"
                 );
 
                 // Save any remaining buffered command data
                 if !command_buffer.is_empty() {
                     if let Some(ref cmd) = current_command {
-                        log::info!("Saving incomplete command buffer for: {}", cmd);
+                        log::info!("Saving incomplete command buffer for: {cmd}");
                         match command_logger::save_command_log(log_dir, cmd, &command_buffer, None)
                         {
                             Ok(log_file_path) => {
-                                log::info!("Saved incomplete command log to: {}", log_file_path);
+                                log::info!("Saved incomplete command log to: {log_file_path}");
                             }
                             Err(e) => {
-                                log::error!("Failed to save incomplete command log: {}", e);
+                                log::error!("Failed to save incomplete command log: {e}");
                             }
                         }
                     }
@@ -155,25 +149,21 @@ pub fn unified_pty_reader(
                 break;
             }
             Ok(n) => {
-                log::trace!("unified_pty_reader: read {} bytes", n);
+                log::trace!("unified_pty_reader: read {n} bytes");
                 let data = &buffer[..n];
-                log::debug!("unified_pty_reader: processing {} bytes of data", n);
+                log::debug!("unified_pty_reader: processing {n} bytes of data");
 
                 // Write to stdout immediately
                 if let Err(e) = stdout.write_all(data) {
                     stdout_errors += 1;
                     log::warn!(
-                        "unified_pty_reader: Failed to write to stdout (error #{}): {}",
-                        stdout_errors,
-                        e
+                        "unified_pty_reader: Failed to write to stdout (error #{stdout_errors}): {e}"
                     );
                 }
                 if let Err(e) = stdout.flush() {
                     stdout_errors += 1;
                     log::warn!(
-                        "unified_pty_reader: Failed to flush stdout (error #{}): {}",
-                        stdout_errors,
-                        e
+                        "unified_pty_reader: Failed to flush stdout (error #{stdout_errors}): {e}"
                     );
                 }
 
@@ -181,17 +171,13 @@ pub fn unified_pty_reader(
                 if let Err(e) = forward_pipe.write_all(data) {
                     forward_pipe_errors += 1;
                     log::warn!(
-                        "unified_pty_reader: Failed to write to forward pipe (error #{}): {}",
-                        forward_pipe_errors,
-                        e
+                        "unified_pty_reader: Failed to write to forward pipe (error #{forward_pipe_errors}): {e}"
                     );
                 }
                 if let Err(e) = forward_pipe.flush() {
                     forward_pipe_errors += 1;
                     log::warn!(
-                        "unified_pty_reader: Failed to flush forward pipe (error #{}): {}",
-                        forward_pipe_errors,
-                        e
+                        "unified_pty_reader: Failed to flush forward pipe (error #{forward_pipe_errors}): {e}"
                     );
                 }
 
@@ -218,7 +204,7 @@ pub fn unified_pty_reader(
 
                         // Save previous command if exists
                         if let Some(ref prev_cmd) = current_command {
-                            log::info!("Saving previous command log: {}", prev_cmd);
+                            log::info!("Saving previous command log: {prev_cmd}");
                             match command_logger::save_command_log(
                                 log_dir,
                                 prev_cmd,
@@ -226,10 +212,10 @@ pub fn unified_pty_reader(
                                 None,
                             ) {
                                 Ok(log_file_path) => {
-                                    log::info!("Saved previous command log to: {}", log_file_path);
+                                    log::info!("Saved previous command log to: {log_file_path}");
                                 }
                                 Err(e) => {
-                                    log::error!("Failed to save previous command log: {}", e);
+                                    log::error!("Failed to save previous command log: {e}");
                                 }
                             }
                         }
@@ -240,7 +226,7 @@ pub fn unified_pty_reader(
                         } else {
                             "unknown".to_string()
                         };
-                        log::info!("Starting new command buffer for: {}", command_str);
+                        log::info!("Starting new command buffer for: {command_str}");
                         current_command = Some(command_str);
                         command_buffer.clear();
 
@@ -269,9 +255,7 @@ pub fn unified_pty_reader(
 
                         if let Some(ref cmd) = current_command {
                             log::info!(
-                                "Ending command '{}' with exit status: {:?}",
-                                cmd,
-                                exit_status
+                                "Ending command '{cmd}' with exit status: {exit_status:?}"
                             );
                             match command_logger::save_command_log(
                                 log_dir,
@@ -280,10 +264,10 @@ pub fn unified_pty_reader(
                                 exit_status,
                             ) {
                                 Ok(log_file_path) => {
-                                    log::info!("Saved command log to: {}", log_file_path);
+                                    log::info!("Saved command log to: {log_file_path}");
                                 }
                                 Err(e) => {
-                                    log::error!("Failed to save command log: {}", e);
+                                    log::error!("Failed to save command log: {e}");
                                 }
                             }
                         }
@@ -321,9 +305,7 @@ pub fn unified_pty_reader(
                     continue;
                 }
                 log::error!(
-                    "unified_pty_reader: I/O error after {} bytes: {}",
-                    total_bytes_read,
-                    e
+                    "unified_pty_reader: I/O error after {total_bytes_read} bytes: {e}"
                 );
                 return Err(e);
             }
@@ -331,10 +313,7 @@ pub fn unified_pty_reader(
     }
 
     log::info!(
-        "unified_pty_reader completed: {} bytes read, {} stdout errors, {} forward pipe errors",
-        total_bytes_read,
-        stdout_errors,
-        forward_pipe_errors
+        "unified_pty_reader completed: {total_bytes_read} bytes read, {stdout_errors} stdout errors, {forward_pipe_errors} forward pipe errors"
     );
     Ok(())
 }

@@ -23,8 +23,8 @@ impl SignalHandler {
     pub fn new() -> Result<Self> {
         log::debug!("Initializing signal handler for all signals");
 
-        let signals = Signals::new(&[SIGCHLD, SIGWINCH, SIGHUP, SIGUSR2]).map_err(|e| {
-            log::error!("Failed to create signal handler: {}", e);
+        let signals = Signals::new([SIGCHLD, SIGWINCH, SIGHUP, SIGUSR2]).map_err(|e| {
+            log::error!("Failed to create signal handler: {e}");
             std::io::Error::other(format!("Failed to create signal handler: {e}"))
         })?;
 
@@ -46,10 +46,10 @@ impl SignalHandler {
 
                     let master_fd_guard = master_fd.lock().await;
                     if let Some(fd) = *master_fd_guard {
-                        log::debug!("Propagating terminal size to PTY master fd: {}", fd);
+                        log::debug!("Propagating terminal size to PTY master fd: {fd}");
 
                         if let Err(e) = propagate_terminal_size(libc::STDIN_FILENO, fd) {
-                            log::error!("Failed to propagate terminal size: {}", e);
+                            log::error!("Failed to propagate terminal size: {e}");
                         } else {
                             log::info!("Terminal size propagated successfully");
                         }
@@ -70,7 +70,7 @@ impl SignalHandler {
                     self.handle_sigusr2().await;
                 }
                 _ => {
-                    log::warn!("Received unexpected signal: {}", signal);
+                    log::warn!("Received unexpected signal: {signal}");
                 }
             }
         }
@@ -86,7 +86,7 @@ impl SignalHandler {
             match child.try_wait() {
                 Ok(Some(status)) => {
                     let exit_code = status.code().unwrap_or(-1);
-                    log::info!("Child process exited with status: {}", exit_code);
+                    log::info!("Child process exited with status: {exit_code}");
 
                     let mut exit_status_guard = callbacks.exit_status.lock().await;
                     *exit_status_guard = Some(exit_code);
@@ -100,7 +100,7 @@ impl SignalHandler {
                     *child_guard = Some(child);
                 }
                 Err(e) => {
-                    log::error!("Error checking child process status: {}", e);
+                    log::error!("Error checking child process status: {e}");
                     let mut exit_status_guard = callbacks.exit_status.lock().await;
                     *exit_status_guard = Some(255);
 

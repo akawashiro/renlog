@@ -56,9 +56,9 @@ pub fn try_decode_bytes(data: &[u8]) -> (bool, Vec<u8>, Vec<String>) {
         let start = pos + marker_bytes.len();
         let mut end = data.len();
 
-        for i in start..data.len() {
-            if data[i] == b'\n' {
-                end = i;
+        for (i, &byte) in data[start..].iter().enumerate() {
+            if byte == b'\n' {
+                end = start + i;
                 break;
             }
         }

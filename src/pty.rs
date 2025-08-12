@@ -27,8 +27,7 @@ impl PtyPair {
                 }
                 Err(e) => {
                     log::warn!(
-                        "Failed to get terminal size from stdin: {}, using defaults",
-                        e
+                        "Failed to get terminal size from stdin: {e}, using defaults"
                     );
                     Winsize {
                         ws_row: 24,
@@ -51,7 +50,7 @@ impl PtyPair {
         log::debug!("PTY window size: {}x{}", winsize.ws_col, winsize.ws_row);
 
         let pty_result = openpty(Some(&winsize), None).map_err(|e| {
-            log::error!("Failed to create PTY: {}", e);
+            log::error!("Failed to create PTY: {e}");
             io::Error::other(format!("Failed to create PTY: {e}"))
         })?;
 
@@ -80,46 +79,46 @@ impl PtyPair {
 }
 
 pub fn set_raw_mode(fd: RawFd) -> Result<Termios> {
-    log::debug!("Setting raw mode for fd: {}", fd);
+    log::debug!("Setting raw mode for fd: {fd}");
     let owned_fd = unsafe { OwnedFd::from_raw_fd(fd) };
 
     let mut termios = tcgetattr(&owned_fd).map_err(|e| {
-        log::error!("tcgetattr failed for fd {}: {}", fd, e);
+        log::error!("tcgetattr failed for fd {fd}: {e}");
         io::Error::other(format!("tcgetattr failed: {e}"))
     })?;
 
     let original = termios.clone();
-    log::debug!("Saved original terminal attributes for fd: {}", fd);
+    log::debug!("Saved original terminal attributes for fd: {fd}");
 
     nix::sys::termios::cfmakeraw(&mut termios);
     log::debug!("Applied raw mode transformation to termios");
 
     tcsetattr(&owned_fd, SetArg::TCSANOW, &termios).map_err(|e| {
-        log::error!("tcsetattr failed for fd {}: {}", fd, e);
+        log::error!("tcsetattr failed for fd {fd}: {e}");
         io::Error::other(format!("tcsetattr failed: {e}"))
     })?;
 
-    log::info!("Terminal fd {} set to raw mode successfully", fd);
+    log::info!("Terminal fd {fd} set to raw mode successfully");
     std::mem::forget(owned_fd); // Don't close the fd
     Ok(original)
 }
 
 pub fn restore_termios(fd: RawFd, termios: &Termios) -> Result<()> {
-    log::debug!("Restoring terminal settings for fd: {}", fd);
+    log::debug!("Restoring terminal settings for fd: {fd}");
     let owned_fd = unsafe { OwnedFd::from_raw_fd(fd) };
 
     tcsetattr(&owned_fd, SetArg::TCSANOW, termios).map_err(|e| {
-        log::error!("restore termios failed for fd {}: {}", fd, e);
+        log::error!("restore termios failed for fd {fd}: {e}");
         io::Error::other(format!("restore termios failed: {e}"))
     })?;
 
-    log::info!("Terminal settings restored successfully for fd: {}", fd);
+    log::info!("Terminal settings restored successfully for fd: {fd}");
     std::mem::forget(owned_fd); // Don't close the fd
     Ok(())
 }
 
 pub fn get_window_size(fd: RawFd) -> Result<Winsize> {
-    log::debug!("Getting window size for fd: {}", fd);
+    log::debug!("Getting window size for fd: {fd}");
 
     let mut winsize: Winsize = unsafe { mem::zeroed() };
 
@@ -133,7 +132,7 @@ pub fn get_window_size(fd: RawFd) -> Result<Winsize> {
 
     if result < 0 {
         let err = io::Error::last_os_error();
-        log::error!("Failed to get window size for fd {}: {}", fd, err);
+        log::error!("Failed to get window size for fd {fd}: {err}");
         return Err(err);
     }
 
@@ -169,19 +168,17 @@ pub fn set_window_size(fd: RawFd, winsize: &Winsize) -> Result<()> {
 
     if result < 0 {
         let err = io::Error::last_os_error();
-        log::error!("Failed to set window size for fd {}: {}", fd, err);
+        log::error!("Failed to set window size for fd {fd}: {err}");
         return Err(err);
     }
 
-    log::info!("Window size set successfully for fd {}", fd);
+    log::info!("Window size set successfully for fd {fd}");
     Ok(())
 }
 
 pub fn propagate_terminal_size(from_fd: RawFd, to_fd: RawFd) -> Result<()> {
     log::debug!(
-        "Propagating terminal size from fd {} to fd {}",
-        from_fd,
-        to_fd
+        "Propagating terminal size from fd {from_fd} to fd {to_fd}"
     );
 
     let winsize = get_window_size(from_fd)?;

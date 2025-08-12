@@ -39,8 +39,7 @@ pub fn truncate_filename_to_limit(filename: &str) -> String {
     if extension.len() >= MAX_FILENAME_LENGTH {
         // If extension is too long, just truncate the whole thing
         log::warn!(
-            "Filename extension too long, truncating entire filename to {} chars",
-            MAX_FILENAME_LENGTH
+            "Filename extension too long, truncating entire filename to {MAX_FILENAME_LENGTH} chars"
         );
         return filename[..MAX_FILENAME_LENGTH].to_string();
     }
@@ -54,42 +53,37 @@ pub fn truncate_filename_to_limit(filename: &str) -> String {
         name_part
     };
 
-    let result = format!("{}{}", truncated_name, extension);
+    let result = format!("{truncated_name}{extension}");
 
     log::debug!(
-        "Truncated filename from {} chars to {} chars: '{}' -> '{}'",
+        "Truncated filename from {} chars to {} chars: '{filename}' -> '{result}'",
         filename.len(),
-        result.len(),
-        filename,
-        result
+        result.len()
     );
 
     result
 }
 
 pub fn ensure_log_directory(log_dir: &str) -> Result<()> {
-    log::debug!("Ensuring command log directory exists: {}", log_dir);
+    log::debug!("Ensuring command log directory exists: {log_dir}");
 
     std::fs::create_dir_all(log_dir).map_err(|e| {
         log::error!(
-            "Failed to create command log directory '{}': {}",
-            log_dir,
-            e
+            "Failed to create command log directory '{log_dir}': {e}"
         );
         std::io::Error::other(format!(
-            "Failed to create command log directory '{}': {}",
-            log_dir, e
+            "Failed to create command log directory '{log_dir}': {e}"
         ))
     })?;
 
-    log::info!("Command log directory ensured: {}", log_dir);
+    log::info!("Command log directory ensured: {log_dir}");
     Ok(())
 }
 
 fn create_latest_symlink(log_dir: &str, filename: &str) -> Result<()> {
     let latest_path = Path::new(log_dir).join("latest.log");
     create_or_update_symlink(filename, &latest_path)?;
-    log::info!("Created latest.log symlink pointing to: {}", filename);
+    log::info!("Created latest.log symlink pointing to: {filename}");
     Ok(())
 }
 
@@ -97,10 +91,10 @@ fn create_latest_symlink(log_dir: &str, filename: &str) -> Result<()> {
 fn update_current_log_file(log_dir: &str, log_file_path: &str) -> Result<()> {
     let current_log_marker = Path::new(log_dir).join(".renlog_current_log");
     std::fs::write(&current_log_marker, log_file_path).map_err(|e| {
-        log::warn!("Failed to update current log file marker: {}", e);
+        log::warn!("Failed to update current log file marker: {e}");
         e
     })?;
-    log::debug!("Updated current log file marker: {}", log_file_path);
+    log::debug!("Updated current log file marker: {log_file_path}");
     Ok(())
 }
 
@@ -111,34 +105,29 @@ pub fn save_command_log(
     exit_status: Option<i32>,
 ) -> Result<String> {
     log::debug!(
-        "Saving command log for '{}', data size: {} bytes, exit status: {:?}",
-        command,
-        data.len(),
-        exit_status
+        "Saving command log for '{command}', data size: {} bytes, exit status: {exit_status:?}",
+        data.len()
     );
 
     let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S_%3f").to_string();
     let safe_command = sanitize_for_filename(command);
-    let filename_raw = format!("{}_{}.log", timestamp, safe_command);
+    let filename_raw = format!("{timestamp}_{safe_command}.log");
     let filename = truncate_filename_to_limit(&filename_raw);
     let filepath = PathBuf::from(log_dir).join(&filename);
 
     log::info!(
-        "Creating command log file: {} for command: {}",
-        filepath.display(),
-        command
+        "Creating command log file: {} for command: {command}",
+        filepath.display()
     );
 
     let mut file = File::create(&filepath).map_err(|e| {
         log::error!(
-            "Failed to create command log file '{}': {}",
-            filepath.display(),
-            e
+            "Failed to create command log file '{}': {e}",
+            filepath.display()
         );
         std::io::Error::other(format!(
-            "Failed to create command log file '{}': {}",
-            filepath.display(),
-            e
+            "Failed to create command log file '{}': {e}",
+            filepath.display()
         ))
     })?;
 
@@ -150,30 +139,30 @@ pub fn save_command_log(
     );
 
     if let Some(status) = exit_status {
-        header.push_str(&format!("# Exit Status: {}\n", status));
+        header.push_str(&format!("# Exit Status: {status}\n"));
     }
-    header.push_str("\n");
+    header.push('\n');
 
     file.write_all(header.as_bytes()).map_err(|e| {
-        log::error!("Failed to write header to command log: {}", e);
+        log::error!("Failed to write header to command log: {e}");
         e
     })?;
 
     // Write the filtered command output (truncate after end command, then strip ANSI codes and command markers)
     let filtered_data = ansi_filter::process_command_log_content(data);
     file.write_all(&filtered_data).map_err(|e| {
-        log::error!("Failed to write command data to log: {}", e);
+        log::error!("Failed to write command data to log: {e}");
         e
     })?;
 
     file.flush().map_err(|e| {
-        log::error!("Failed to flush command log: {}", e);
+        log::error!("Failed to flush command log: {e}");
         e
     })?;
 
     // Create symlink to the new log file
     if let Err(e) = create_latest_symlink(log_dir, &filename) {
-        log::warn!("Failed to create latest.log symlink: {}", e);
+        log::warn!("Failed to create latest.log symlink: {e}");
     }
 
     log::info!(
@@ -186,7 +175,7 @@ pub fn save_command_log(
 
     // Update the current log file tracking
     if let Err(e) = update_current_log_file(log_dir, &log_file_path) {
-        log::warn!("Failed to update current log file tracking: {}", e);
+        log::warn!("Failed to update current log file tracking: {e}");
     }
 
     Ok(log_file_path)
@@ -274,7 +263,7 @@ mod tests {
         let timestamp = "20250812_121805_123";
         let long_command = "a".repeat(300); // Very long command
         let safe_command = sanitize_for_filename(&long_command);
-        let filename_raw = format!("{}_{}.log", timestamp, safe_command);
+        let filename_raw = format!("{timestamp}_{safe_command}.log");
         let filename = truncate_filename_to_limit(&filename_raw);
 
         assert!(filename.len() <= MAX_FILENAME_LENGTH);

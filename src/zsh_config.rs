@@ -20,7 +20,7 @@ function renlog_zsh_preexec() {{
     local cmd="$3" # Current command line.
     if [[ -n "$RENLOG_PID" ]]; then
         # Send command marker to renlog via invisible stdout with better terminal handling
-        printf '{} %s\n' "$cmd"
+        printf '{START_COMMAND_NAME} %s\n' "$cmd"
         # Use more reliable cursor manipulation with carriage return + clear line
         printf '\r\e[K'
         # Additional fallback: move cursor up and clear line if previous method insufficient
@@ -33,7 +33,7 @@ function renlog_zsh_postexec() {{
     local last_status=$?
     if [[ -n "$RENLOG_PID" ]]; then
         # Send end command marker to renlog via invisible stdout with better terminal handling
-        printf '{} %d\n' "$last_status"
+        printf '{END_COMMAND_NAME} %d\n' "$last_status"
         # Use more reliable cursor manipulation with carriage return + clear line
         printf '\r\e[K'
         # Additional fallback: move cursor up and clear line if previous method insufficient
@@ -66,7 +66,6 @@ if [[ -n "$RENLOG_PID" ]]; then
     echo "Renlog zsh integration loaded (PID: $RENLOG_PID)"
 fi
 
-"#,
-        START_COMMAND_NAME, END_COMMAND_NAME
+"#
     );
 }

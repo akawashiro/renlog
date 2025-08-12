@@ -30,21 +30,16 @@ impl Session {
         log::debug!("Creating new Session instance");
         let pid = std::process::id();
         log::info!(
-            "Session initializing with PID={} renlog_dir={}",
-            pid,
-            renlog_dir
+            "Session initializing with PID={pid} renlog_dir={renlog_dir}"
         );
 
         // Create the log directory if it doesn't exist
         std::fs::create_dir_all(renlog_dir).map_err(|e| {
             log::error!(
-                "Failed to create renlog log directory '{}': {}",
-                renlog_dir,
-                e
+                "Failed to create renlog log directory '{renlog_dir}': {e}"
             );
             io::Error::other(format!(
-                "Failed to create renlog log directory '{}': {}",
-                renlog_dir, e
+                "Failed to create renlog log directory '{renlog_dir}': {e}"
             ))
         })?;
 
@@ -65,7 +60,7 @@ impl Session {
         let original_termios = if nix::unistd::isatty(libc::STDIN_FILENO).unwrap_or(false) {
             log::debug!("Setting stdin to raw mode");
             Some(set_raw_mode(libc::STDIN_FILENO).map_err(|e| {
-                log::error!("Failed to set raw mode: {}", e);
+                log::error!("Failed to set raw mode: {e}");
                 io::Error::other(format!("Failed to set raw mode: {e}"))
             })?)
         } else {
@@ -98,7 +93,7 @@ impl Session {
         log::debug!("Starting child process");
         // Set up environment variables for the child
         let shell = env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
-        log::info!("Using shell: {}", shell);
+        log::info!("Using shell: {shell}");
 
         let mut cmd = Command::new("/bin/sh");
         cmd.arg("-c");
@@ -124,15 +119,15 @@ impl Session {
         // Set up stdio to use the PTY slave (duplicate fd for each stdio stream)
         let slave_fd = self.pty.slave_fd();
         let stdin_fd = unistd::dup(slave_fd).map_err(|e| {
-            log::error!("Failed to dup slave fd for stdin: {}", e);
+            log::error!("Failed to dup slave fd for stdin: {e}");
             io::Error::other(format!("Failed to dup slave fd for stdin: {e}"))
         })?;
         let stdout_fd = unistd::dup(slave_fd).map_err(|e| {
-            log::error!("Failed to dup slave fd for stdout: {}", e);
+            log::error!("Failed to dup slave fd for stdout: {e}");
             io::Error::other(format!("Failed to dup slave fd for stdout: {e}"))
         })?;
         let stderr_fd = unistd::dup(slave_fd).map_err(|e| {
-            log::error!("Failed to dup slave fd for stderr: {}", e);
+            log::error!("Failed to dup slave fd for stderr: {e}");
             io::Error::other(format!("Failed to dup slave fd for stderr: {e}"))
         })?;
 
@@ -140,14 +135,11 @@ impl Session {
         cmd.stdout(unsafe { Stdio::from_raw_fd(stdout_fd) });
         cmd.stderr(unsafe { Stdio::from_raw_fd(stderr_fd) });
         log::debug!(
-            "Configured child stdio to use duplicated PTY slave fds: stdin={}, stdout={}, stderr={}",
-            stdin_fd,
-            stdout_fd,
-            stderr_fd
+            "Configured child stdio to use duplicated PTY slave fds: stdin={stdin_fd}, stdout={stdout_fd}, stderr={stderr_fd}"
         );
 
         let child = cmd.spawn().map_err(|e| {
-            log::error!("Failed to spawn child process: {}", e);
+            log::error!("Failed to spawn child process: {e}");
             e
         })?;
         let child_pid = child.id();
@@ -156,8 +148,8 @@ impl Session {
         let mut child_guard = self.child.lock().await;
         *child_guard = Some(child);
 
-        log::info!("Child process started with PID: {}", child_pid);
-        println!("Child process started with PID: {}", child_pid);
+        log::info!("Child process started with PID: {child_pid}");
+        println!("Child process started with PID: {child_pid}");
         Ok(())
     }
 
@@ -178,32 +170,28 @@ impl Session {
             .as_raw_fd();
 
         log::debug!(
-            "File descriptors - stdin: {}, stdout: {}, master: {}, forward_pipe: {}",
-            stdin_fd,
-            stdout_fd,
-            master_fd,
-            forward_pipe_fd
+            "File descriptors - stdin: {stdin_fd}, stdout: {stdout_fd}, master: {master_fd}, forward_pipe: {forward_pipe_fd}"
         );
 
         // Create separate owned file descriptors by duplicating them
         let stdin_dup = unistd::dup(stdin_fd).map_err(|e| {
-            log::error!("Failed to dup stdin: {}", e);
+            log::error!("Failed to dup stdin: {e}");
             io::Error::other(format!("Failed to dup stdin: {e}"))
         })?;
         let stdout_dup = unistd::dup(stdout_fd).map_err(|e| {
-            log::error!("Failed to dup stdout: {}", e);
+            log::error!("Failed to dup stdout: {e}");
             io::Error::other(format!("Failed to dup stdout: {e}"))
         })?;
         let master_dup1 = unistd::dup(master_fd).map_err(|e| {
-            log::error!("Failed to dup master1: {}", e);
+            log::error!("Failed to dup master1: {e}");
             io::Error::other(format!("Failed to dup master1: {e}"))
         })?;
         let master_dup2 = unistd::dup(master_fd).map_err(|e| {
-            log::error!("Failed to dup master2: {}", e);
+            log::error!("Failed to dup master2: {e}");
             io::Error::other(format!("Failed to dup master2: {e}"))
         })?;
         let forward_dup = unistd::dup(forward_pipe_fd).map_err(|e| {
-            log::error!("Failed to dup forward pipe: {}", e);
+            log::error!("Failed to dup forward pipe: {e}");
             io::Error::other(format!("Failed to dup forward pipe: {e}"))
         })?;
 
@@ -224,7 +212,7 @@ impl Session {
         thread::spawn(move || {
             log::debug!("Command-aware stdin forwarder thread started");
             if let Err(e) = forward_with_command_detection(stdin, stdin_master) {
-                log::error!("Error in command-aware stdin forwarding: {}", e);
+                log::error!("Error in command-aware stdin forwarding: {e}");
                 eprintln!("Error in command-aware stdin forwarding: {e}");
             }
             log::debug!("Command-aware stdin forwarder thread ending");
@@ -240,7 +228,7 @@ impl Session {
                 forward_pipe_clone,
                 &renlog_dir_for_output,
             ) {
-                log::error!("Error in unified PTY reader: {}", e);
+                log::error!("Error in unified PTY reader: {e}");
                 eprintln!("Error in unified PTY reader: {e}");
             }
             log::debug!("Unified PTY reader thread ending");
@@ -271,7 +259,7 @@ impl Session {
         let exit_code = exit_status_guard.unwrap_or(0);
         drop(exit_status_guard);
 
-        log::info!("Child process exited with code: {}", exit_code);
+        log::info!("Child process exited with code: {exit_code}");
         println!("Child process exited with code: {exit_code}");
         Ok(exit_code)
     }
@@ -297,7 +285,7 @@ impl Drop for Session {
         if let Some(termios) = &self.original_termios {
             log::debug!("Restoring original terminal settings");
             if let Err(e) = restore_termios(libc::STDIN_FILENO, termios) {
-                log::error!("Failed to restore terminal settings: {}", e);
+                log::error!("Failed to restore terminal settings: {e}");
             } else {
                 log::debug!("Terminal settings restored successfully");
             }
@@ -309,10 +297,10 @@ impl Drop for Session {
             if let Some(mut child) = child_guard.take() {
                 log::debug!("Killing child process with PID: {}", child.id());
                 if let Err(e) = child.kill() {
-                    log::error!("Failed to kill child process: {}", e);
+                    log::error!("Failed to kill child process: {e}");
                 }
                 if let Err(e) = child.wait() {
-                    log::error!("Failed to wait for killed child process: {}", e);
+                    log::error!("Failed to wait for killed child process: {e}");
                 } else {
                     log::debug!("Child process cleanup completed");
                 }

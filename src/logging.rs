@@ -52,7 +52,7 @@ impl Log for GlogLogger {
 
             let file_line = if let (Some(file), Some(line)) = (record.file(), record.line()) {
                 let file_name = file.rsplit('/').next().unwrap_or(file);
-                format!(" {}:{}", file_name, line)
+                format!(" {file_name}:{line}")
             } else {
                 String::new()
             };
@@ -91,8 +91,7 @@ pub fn init_logging(log_file: &str, log_level: &str) -> Result<()> {
         Ok(level) => level,
         Err(_) => {
             eprintln!(
-                "Warning: Invalid log level '{}', defaulting to 'info'",
-                log_level
+                "Warning: Invalid log level '{log_level}', defaulting to 'info'"
             );
             LevelFilter::Info
         }
@@ -101,13 +100,12 @@ pub fn init_logging(log_file: &str, log_level: &str) -> Result<()> {
     match init_file_logging(log_file, level_filter) {
         Ok(()) => {
             LOGGING_ENABLED.store(true, Ordering::Relaxed);
-            log::info!("Renlog internal logging initialized to file: {}", log_file);
+            log::info!("Renlog internal logging initialized to file: {log_file}");
             Ok(())
         }
         Err(e) => {
             eprintln!(
-                "Warning: Failed to initialize file logging to '{}': {}",
-                log_file, e
+                "Warning: Failed to initialize file logging to '{log_file}': {e}"
             );
             eprintln!("Continuing without logging...");
             init_null_logging()?;
@@ -122,13 +120,13 @@ fn init_file_logging(file_path: &str, level: LevelFilter) -> Result<()> {
         .append(true)
         .mode(0o600)
         .open(file_path)
-        .map_err(|e| io::Error::other(format!("Failed to create/open log file: {}", e)))?;
+        .map_err(|e| io::Error::other(format!("Failed to create/open log file: {e}")))?;
 
     LOGGER.set_file(file);
     LOGGER.set_level(level);
 
     log::set_logger(&LOGGER)
-        .map_err(|e| io::Error::other(format!("Failed to set logger: {}", e)))?;
+        .map_err(|e| io::Error::other(format!("Failed to set logger: {e}")))?;
 
     log::set_max_level(level);
 

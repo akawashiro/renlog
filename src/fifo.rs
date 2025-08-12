@@ -15,9 +15,7 @@ pub struct FifoPair {
 impl FifoPair {
     pub fn new(temp_dir: &str, pid: u32) -> Result<Self> {
         log::debug!(
-            "Creating FIFO pair for PID {} in temp_dir: {}",
-            pid,
-            temp_dir
+            "Creating FIFO pair for PID {pid} in temp_dir: {temp_dir}"
         );
         let forward_path = PathBuf::from(format!("{temp_dir}/renlog.{pid}.f.pipe"));
         let reverse_path = PathBuf::from(format!("{temp_dir}/renlog.{pid}.r.pipe"));
@@ -47,9 +45,8 @@ impl FifoPair {
             if libc::mkfifo(forward_c_path.as_ptr(), 0o600) != 0 {
                 let error = io::Error::last_os_error();
                 log::error!(
-                    "Failed to create forward FIFO {}: {}",
-                    forward_path.display(),
-                    error
+                    "Failed to create forward FIFO {}: {error}",
+                    forward_path.display()
                 );
                 return Err(error);
             }
@@ -60,9 +57,8 @@ impl FifoPair {
             if libc::mkfifo(reverse_c_path.as_ptr(), 0o600) != 0 {
                 let error = io::Error::last_os_error();
                 log::error!(
-                    "Failed to create reverse FIFO {}: {}",
-                    reverse_path.display(),
-                    error
+                    "Failed to create reverse FIFO {}: {error}",
+                    reverse_path.display()
                 );
                 return Err(error);
             }
@@ -88,9 +84,8 @@ impl FifoPair {
         log::debug!("Opening forward FIFO: {}", self.forward_path.display());
         let forward_fd = open(&self.forward_path, OFlag::O_RDWR, Mode::empty()).map_err(|e| {
             log::error!(
-                "Failed to open forward FIFO {}: {}",
-                self.forward_path.display(),
-                e
+                "Failed to open forward FIFO {}: {e}",
+                self.forward_path.display()
             );
             io::Error::other(format!("Failed to open forward FIFO: {e}"))
         })?;
@@ -98,9 +93,8 @@ impl FifoPair {
         log::debug!("Opening reverse FIFO: {}", self.reverse_path.display());
         let reverse_fd = open(&self.reverse_path, OFlag::O_RDWR, Mode::empty()).map_err(|e| {
             log::error!(
-                "Failed to open reverse FIFO {}: {}",
-                self.reverse_path.display(),
-                e
+                "Failed to open reverse FIFO {}: {e}",
+                self.reverse_path.display()
             );
             io::Error::other(format!("Failed to open reverse FIFO: {e}"))
         })?;
@@ -109,9 +103,7 @@ impl FifoPair {
         self.reverse_file = Some(unsafe { File::from_raw_fd(reverse_fd) });
 
         log::info!(
-            "FIFO pair opened successfully: forward_fd={}, reverse_fd={}",
-            forward_fd,
-            reverse_fd
+            "FIFO pair opened successfully: forward_fd={forward_fd}, reverse_fd={reverse_fd}"
         );
         Ok(())
     }
@@ -133,9 +125,8 @@ impl Drop for FifoPair {
             log::debug!("Removing forward FIFO: {}", self.forward_path.display());
             if let Err(e) = remove_file(&self.forward_path) {
                 log::error!(
-                    "Failed to remove forward FIFO {}: {}",
-                    self.forward_path.display(),
-                    e
+                    "Failed to remove forward FIFO {}: {e}",
+                    self.forward_path.display()
                 );
             }
         }
@@ -144,9 +135,8 @@ impl Drop for FifoPair {
             log::debug!("Removing reverse FIFO: {}", self.reverse_path.display());
             if let Err(e) = remove_file(&self.reverse_path) {
                 log::error!(
-                    "Failed to remove reverse FIFO {}: {}",
-                    self.reverse_path.display(),
-                    e
+                    "Failed to remove reverse FIFO {}: {e}",
+                    self.reverse_path.display()
                 );
             }
         }
