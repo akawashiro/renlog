@@ -141,7 +141,8 @@ pub fn unified_pty_reader(
                 if !command_buffer.is_empty() {
                     if let Some(ref cmd) = current_command {
                         log::info!("Saving incomplete command buffer for: {}", cmd);
-                        match command_logger::save_command_log(log_dir, cmd, &command_buffer, None) {
+                        match command_logger::save_command_log(log_dir, cmd, &command_buffer, None)
+                        {
                             Ok(log_file_path) => {
                                 log::info!("Saved incomplete command log to: {}", log_file_path);
                             }

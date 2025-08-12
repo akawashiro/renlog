@@ -1,6 +1,7 @@
 mod ansi_filter;
 mod command_logger;
 mod command_markers;
+mod emergency_shell;
 mod fifo;
 mod io_forward;
 mod logging;
@@ -13,6 +14,7 @@ mod zsh_config;
 use chrono::Utc;
 use clap::{Parser, Subcommand};
 use command_logger::truncate_filename_to_limit;
+use emergency_shell::EmergencyShell;
 use session::Session;
 use signals::SignalHandler;
 use std::io::Result;
@@ -91,33 +93,69 @@ async fn run_log_session(renlog_dir: &str, log_level: &str) -> Result<()> {
     log::info!("Starting Renlog (Rust implementation of zenlog)...");
     println!("Starting Renlog (Rust implementation of zenlog)...");
 
+    // Create emergency shell for fallback
+    let emergency_shell = EmergencyShell::new();
+
+    // Try to start renlog session with emergency fallback
+    let result = run_renlog_session(renlog_dir).await;
+
+    match result {
+        Ok(exit_code) => {
+            log::info!("Renlog session ended with exit code: {}", exit_code);
+            println!("Renlog session ended with exit code: {exit_code}");
+            Ok(())
+        }
+        Err(e) => {
+            log::error!("Renlog session failed: {}", e);
+            eprintln!("Renlog failed to start: {}", e);
+
+            // Fall back to emergency shell
+            match emergency_shell.start_with_error(&format!("Renlog initialization failed: {}", e))
+            {
+                Ok(status) => {
+                    let exit_code = status.code().unwrap_or(1);
+                    log::info!("Emergency shell exited with code: {}", exit_code);
+                    std::process::exit(exit_code);
+                }
+                Err(emergency_err) => {
+                    log::error!("Emergency shell also failed: {}", emergency_err);
+                    eprintln!("CRITICAL: Both renlog and emergency shell failed!");
+                    eprintln!("Emergency shell error: {}", emergency_err);
+                    std::process::exit(1);
+                }
+            }
+        }
+    }
+}
+
+async fn run_renlog_session(renlog_dir: &str) -> Result<i32> {
     let mut session = Session::new(renlog_dir)?;
 
-    session.start_child()?;
+    session.start_child().await?;
 
     session.start_forwarders()?;
 
-    // Set up signal handling for SIGWINCH
+    // Set up signal handling with all signals
     let master_fd = Arc::new(Mutex::new(Some(session.get_master_fd())));
+    let session_callbacks = session.get_session_callbacks();
     let signal_handler = SignalHandler::new()?;
 
     // Spawn signal handler task
-    let signal_task = tokio::spawn(signal_handler.handle_signals(master_fd.clone()));
+    let signal_task =
+        tokio::spawn(signal_handler.handle_signals(master_fd.clone(), session_callbacks));
 
     println!("Session initialized. Type 'exit' to quit.");
 
-    let exit_code = session.wait_for_child()?;
+    let exit_code = session.wait_for_child().await?;
 
     // Clear the master fd to stop signal handling
     {
-        let mut fd_guard = master_fd.blocking_lock();
+        let mut fd_guard = master_fd.lock().await;
         *fd_guard = None;
     }
 
     // Cancel signal handler task
     signal_task.abort();
 
-    log::info!("Renlog session ended with exit code: {}", exit_code);
-    println!("Renlog session ended with exit code: {exit_code}");
-    Ok(())
+    Ok(exit_code)
 }

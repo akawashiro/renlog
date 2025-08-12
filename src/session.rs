@@ -10,15 +10,19 @@ use std::fs::File;
 use std::io::{self, Result};
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::process::{Child, Command, Stdio};
+use std::sync::Arc;
 use std::thread;
+use tokio::sync::Mutex;
 
 pub struct Session {
     pty: PtyPair,
     fifos: FifoPair,
-    child: Option<Child>,
+    child: Arc<Mutex<Option<Child>>>,
     original_termios: Option<Termios>,
     pid: u32,
     renlog_dir: String,
+    exit_status: Arc<Mutex<Option<i32>>>,
+    shutdown_flag: Arc<Mutex<bool>>,
 }
 
 impl Session {
@@ -81,14 +85,16 @@ impl Session {
         Ok(Session {
             pty,
             fifos,
-            child: None,
+            child: Arc::new(Mutex::new(None)),
             original_termios,
             pid,
             renlog_dir: renlog_dir.to_string(),
+            exit_status: Arc::new(Mutex::new(None)),
+            shutdown_flag: Arc::new(Mutex::new(false)),
         })
     }
 
-    pub fn start_child(&mut self) -> Result<()> {
+    pub async fn start_child(&mut self) -> Result<()> {
         log::debug!("Starting child process");
         // Set up environment variables for the child
         let shell = env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
@@ -102,11 +108,11 @@ impl Session {
         cmd.env("RENLOG_PID", self.pid.to_string());
         cmd.env("RENLOG_DIR", &self.renlog_dir);
         cmd.env("RENLOG_LOGGER_OUT", self.fifos.reverse_path_str());
-        
+
         // Set up the current log file marker path for shell integration
         let current_log_marker = format!("{}/.renlog_current_log", &self.renlog_dir);
         cmd.env("RENLOG_LOG_FILE", &current_log_marker);
-        
+
         log::debug!(
             "Set environment variables: RENLOG_PID={}, RENLOG_DIR={}, RENLOG_LOGGER_OUT={}, RENLOG_LOG_FILE={}",
             self.pid,
@@ -145,7 +151,10 @@ impl Session {
             e
         })?;
         let child_pid = child.id();
-        self.child = Some(child);
+
+        // Store child in Arc<Mutex<>>
+        let mut child_guard = self.child.lock().await;
+        *child_guard = Some(child);
 
         log::info!("Child process started with PID: {}", child_pid);
         println!("Child process started with PID: {}", child_pid);
@@ -241,29 +250,42 @@ impl Session {
         Ok(())
     }
 
-    pub fn wait_for_child(&mut self) -> Result<i32> {
+    pub async fn wait_for_child(&mut self) -> Result<i32> {
         log::debug!("Waiting for child process to exit");
-        if let Some(mut child) = self.child.take() {
-            match child.wait() {
-                Ok(status) => {
-                    let exit_code = status.code().unwrap_or(-1);
-                    log::info!("Child process exited with code: {}", exit_code);
-                    println!("Child process exited with code: {exit_code}");
-                    Ok(exit_code)
-                }
-                Err(e) => {
-                    log::error!("Error waiting for child process: {}", e);
-                    Err(e)
-                }
+
+        // Wait for shutdown flag to be set by signal handler
+        loop {
+            let shutdown_guard = self.shutdown_flag.lock().await;
+            if *shutdown_guard {
+                drop(shutdown_guard);
+                break;
             }
-        } else {
-            log::warn!("wait_for_child called but no child process exists");
-            Ok(0)
+            drop(shutdown_guard);
+
+            // Sleep briefly before checking again
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         }
+
+        // Get the exit status set by the signal handler
+        let exit_status_guard = self.exit_status.lock().await;
+        let exit_code = exit_status_guard.unwrap_or(0);
+        drop(exit_status_guard);
+
+        log::info!("Child process exited with code: {}", exit_code);
+        println!("Child process exited with code: {exit_code}");
+        Ok(exit_code)
     }
 
     pub fn get_master_fd(&self) -> RawFd {
         self.pty.master_fd()
+    }
+
+    pub fn get_session_callbacks(&self) -> crate::signals::SessionCallbacks {
+        crate::signals::SessionCallbacks {
+            child: self.child.clone(),
+            exit_status: self.exit_status.clone(),
+            shutdown_flag: self.shutdown_flag.clone(),
+        }
     }
 }
 
@@ -282,16 +304,21 @@ impl Drop for Session {
         }
 
         // Kill child process if still running
-        if let Some(mut child) = self.child.take() {
-            log::debug!("Killing child process with PID: {}", child.id());
-            if let Err(e) = child.kill() {
-                log::error!("Failed to kill child process: {}", e);
+        // Note: We can't use async in Drop, so we use try_lock
+        if let Ok(mut child_guard) = self.child.try_lock() {
+            if let Some(mut child) = child_guard.take() {
+                log::debug!("Killing child process with PID: {}", child.id());
+                if let Err(e) = child.kill() {
+                    log::error!("Failed to kill child process: {}", e);
+                }
+                if let Err(e) = child.wait() {
+                    log::error!("Failed to wait for killed child process: {}", e);
+                } else {
+                    log::debug!("Child process cleanup completed");
+                }
             }
-            if let Err(e) = child.wait() {
-                log::error!("Failed to wait for killed child process: {}", e);
-            } else {
-                log::debug!("Child process cleanup completed");
-            }
+        } else {
+            log::warn!("Could not acquire lock to kill child process during cleanup");
         }
 
         log::info!("Session cleanup completed");

@@ -38,10 +38,13 @@ pub fn truncate_filename_to_limit(filename: &str) -> String {
     // Calculate how much space we have for the name part
     if extension.len() >= MAX_FILENAME_LENGTH {
         // If extension is too long, just truncate the whole thing
-        log::warn!("Filename extension too long, truncating entire filename to {} chars", MAX_FILENAME_LENGTH);
+        log::warn!(
+            "Filename extension too long, truncating entire filename to {} chars",
+            MAX_FILENAME_LENGTH
+        );
         return filename[..MAX_FILENAME_LENGTH].to_string();
     }
-    
+
     let available_space = MAX_FILENAME_LENGTH - extension.len();
 
     // Truncate the name part and add the extension back
@@ -52,7 +55,7 @@ pub fn truncate_filename_to_limit(filename: &str) -> String {
     };
 
     let result = format!("{}{}", truncated_name, extension);
-    
+
     log::debug!(
         "Truncated filename from {} chars to {} chars: '{}' -> '{}'",
         filename.len(),
@@ -60,7 +63,7 @@ pub fn truncate_filename_to_limit(filename: &str) -> String {
         filename,
         result
     );
-    
+
     result
 }
 
@@ -180,7 +183,7 @@ pub fn save_command_log(
     );
 
     let log_file_path = filepath.to_string_lossy().to_string();
-    
+
     // Update the current log file tracking
     if let Err(e) = update_current_log_file(log_dir, &log_file_path) {
         log::warn!("Failed to update current log file tracking: {}", e);
@@ -222,11 +225,11 @@ mod tests {
         let name_part = "a".repeat(MAX_FILENAME_LENGTH - 3); // Leave space for .log
         let long_filename = format!("{}.log", name_part);
         assert!(long_filename.len() > MAX_FILENAME_LENGTH);
-        
+
         let result = truncate_filename_to_limit(&long_filename);
         assert!(result.len() <= MAX_FILENAME_LENGTH);
         assert!(result.ends_with(".log"));
-        
+
         // Should truncate the name part but preserve extension
         let expected_name_len = MAX_FILENAME_LENGTH - 4; // 4 chars for ".log"
         let expected = format!("{}.log", "a".repeat(expected_name_len));
@@ -237,7 +240,7 @@ mod tests {
     fn test_truncate_filename_very_long_extension() {
         let very_long_ext = ".".to_string() + &"x".repeat(MAX_FILENAME_LENGTH + 10);
         let filename = format!("test{}", very_long_ext);
-        
+
         let result = truncate_filename_to_limit(&filename);
         assert_eq!(result.len(), MAX_FILENAME_LENGTH);
         // Should truncate the entire filename since extension is too long
@@ -248,7 +251,7 @@ mod tests {
     fn test_sanitize_for_filename() {
         let problematic_command = "ls -la /path/with spaces & <special> chars*?";
         let result = sanitize_for_filename(problematic_command);
-        
+
         // Should not contain problematic characters
         assert!(!result.contains('/'));
         assert!(!result.contains('<'));
@@ -256,10 +259,10 @@ mod tests {
         assert!(!result.contains('*'));
         assert!(!result.contains('?'));
         assert!(!result.contains('&'));
-        
+
         // Spaces should become dashes
         assert!(result.contains('-'));
-        
+
         // Should preserve alphanumeric characters
         assert!(result.contains('l'));
         assert!(result.contains('s'));
@@ -273,7 +276,7 @@ mod tests {
         let safe_command = sanitize_for_filename(&long_command);
         let filename_raw = format!("{}_{}.log", timestamp, safe_command);
         let filename = truncate_filename_to_limit(&filename_raw);
-        
+
         assert!(filename.len() <= MAX_FILENAME_LENGTH);
         assert!(filename.starts_with(timestamp));
         assert!(filename.ends_with(".log"));

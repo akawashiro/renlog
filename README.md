@@ -132,10 +132,10 @@ Based on research of the zenlog codebase, this document outlines the core archit
 - [ ] FIFO pipe creation for communication
 
 #### Phase 1.5: Signal Handling
-- [ ] Signal handling framework (SIGCHLD, SIGWINCH, SIGHUP, SIGUSR2)
-- [ ] Terminal resize propagation
-- [ ] Child process cleanup
-- [ ] Emergency shell fallback
+- [x] Signal handling framework (SIGCHLD, SIGWINCH, SIGHUP, SIGUSR2)
+- [x] Terminal resize propagation
+- [x] Child process cleanup
+- [x] Emergency shell fallback
 
 #### Phase 2: Log File System
 - [ ] Directory structure creation
