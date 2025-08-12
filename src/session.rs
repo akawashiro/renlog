@@ -1,6 +1,6 @@
 use crate::command_logger;
 use crate::fifo::FifoPair;
-use crate::io_forward::{forward_with_command_detection, unified_pty_reader};
+use crate::io_forward::{simple_forward, unified_pty_reader};
 use crate::pty::{restore_termios, set_raw_mode, PtyPair};
 
 use nix::sys::termios::Termios;
@@ -217,15 +217,15 @@ impl Session {
         // Clone necessary data for the output thread
         let renlog_dir_for_output = self.renlog_dir.clone();
 
-        // Forward stdin to PTY master with command detection
-        log::debug!("Starting stdin->master forwarder thread with command detection");
+        // Forward stdin to PTY master
+        log::debug!("Starting stdin->master forwarder thread");
         thread::spawn(move || {
-            log::debug!("Command-aware stdin forwarder thread started");
-            if let Err(e) = forward_with_command_detection(stdin, stdin_master) {
-                log::error!("Error in command-aware stdin forwarding: {e}");
-                eprintln!("Error in command-aware stdin forwarding: {e}");
+            log::debug!("Stdin forwarder thread started");
+            if let Err(e) = simple_forward(stdin, stdin_master) {
+                log::error!("Error in stdin forwarding: {e}");
+                eprintln!("Error in stdin forwarding: {e}");
             }
-            log::debug!("Command-aware stdin forwarder thread ending");
+            log::debug!("Stdin forwarder thread ending");
         });
 
         // Use unified PTY reader for output forwarding and command detection/logging

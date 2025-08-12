@@ -1,4 +1,4 @@
-use crate::ansi_filter;
+use crate::log_processor;
 use crate::symlink_utils::create_or_update_symlink;
 use std::fs::File;
 use std::io::{Result, Write};
@@ -147,7 +147,7 @@ pub fn save_command_log(
     })?;
 
     // Write the filtered command output (truncate after end command, then strip ANSI codes and command markers)
-    let filtered_data = ansi_filter::process_command_log_content(data);
+    let filtered_data = log_processor::process_command_log_content(data);
     file.write_all(&filtered_data).map_err(|e| {
         log::error!("Failed to write command data to log: {e}");
         e

@@ -1,105 +1,52 @@
 use crate::command_logger;
-use crate::command_markers::{self, END_COMMAND_NAME, START_COMMAND_NAME};
+use crate::command_markers::{END_COMMAND_NAME, START_COMMAND_NAME};
 use std::fs::File;
 use std::io::{self, Read, Result, Write};
 
 const BUFFER_SIZE: usize = 32 * 1024;
 
-// Command-aware input forwarding with command marker detection
-pub fn forward_with_command_detection(mut input: File, mut output: File) -> Result<()> {
-    log::debug!("Starting command-aware input forwarding with marker detection");
+// Simple input forwarding without command detection (used for stdin)
+pub fn simple_forward(mut input: File, mut output: File) -> Result<()> {
+    log::debug!("Starting simple input forwarding");
     let mut buffer = [0u8; BUFFER_SIZE];
     let mut total_bytes_forwarded = 0u64;
-    let mut data_buffer = Vec::new();
 
     loop {
         match input.read(&mut buffer) {
             Ok(0) => {
                 log::debug!(
-                    "forward_with_command_detection: EOF reached, total bytes forwarded: {total_bytes_forwarded}"
+                    "simple_forward: EOF reached, total bytes forwarded: {total_bytes_forwarded}"
                 );
                 break; // EOF
             }
             Ok(n) => {
-                log::trace!("forward_with_command_detection: read {n} bytes");
+                log::trace!("simple_forward: read {n} bytes");
                 let data = &buffer[..n];
 
                 // Write data to output immediately
                 output.write_all(data)?;
                 output.flush()?;
 
-                // Add data to our buffer for marker detection
-                data_buffer.extend_from_slice(data);
-
-                // Try to decode command markers from the accumulated data
-                let (success, prefix, args) = command_markers::try_decode_bytes(&data_buffer);
-
-                if success {
-                    log::debug!("Detected command marker with args: {args:?}");
-
-                    // Process the command markers but don't do any logging
-                    // The unified_pty_reader handles all command logging
-                    if !args.is_empty() {
-                        if args[0] == END_COMMAND_NAME {
-                            let exit_status = if args.len() > 1 {
-                                args[1].parse::<i32>().ok()
-                            } else {
-                                None
-                            };
-                            log::info!(
-                                "Detected end command marker with exit status: {exit_status:?}"
-                            );
-                        } else if args[0] == START_COMMAND_NAME {
-                            let command_str = if args.len() > 1 {
-                                args[1..].join(" ")
-                            } else {
-                                "unknown".to_string()
-                            };
-                            log::info!("Detected start command marker for: {command_str}");
-                        }
-                    }
-
-                    // Keep any remaining data after the command marker for next iteration
-                    let marker_and_command_len = prefix.len()
-                        + command_markers::COMMAND_MARKER.len()
-                        + args.join(" ").len()
-                        + 1; // +1 for newline
-
-                    if marker_and_command_len < data_buffer.len() {
-                        data_buffer = data_buffer[marker_and_command_len..].to_vec();
-                    } else {
-                        data_buffer.clear();
-                    }
-                } else {
-                    // No marker found, keep last part of buffer in case marker spans reads
-                    let marker_len = command_markers::COMMAND_MARKER.len();
-                    if data_buffer.len() > marker_len {
-                        data_buffer = data_buffer[(data_buffer.len() - marker_len)..].to_vec();
-                    }
-                }
-
                 total_bytes_forwarded += n as u64;
                 if total_bytes_forwarded % (1024 * 1024) == 0 {
                     log::debug!(
-                        "forward_with_command_detection: forwarded {} MB",
+                        "simple_forward: forwarded {} MB",
                         total_bytes_forwarded / (1024 * 1024)
                     );
                 }
             }
             Err(e) => {
                 if e.kind() == io::ErrorKind::Interrupted {
-                    log::trace!("forward_with_command_detection: interrupted, continuing");
+                    log::trace!("simple_forward: interrupted, continuing");
                     continue;
                 }
-                log::error!(
-                    "forward_with_command_detection: I/O error after {total_bytes_forwarded} bytes: {e}"
-                );
+                log::error!("simple_forward: I/O error after {total_bytes_forwarded} bytes: {e}");
                 return Err(e);
             }
         }
     }
 
-    log::info!("forward_with_command_detection completed: {total_bytes_forwarded} bytes forwarded");
+    log::info!("simple_forward completed: {total_bytes_forwarded} bytes forwarded");
     Ok(())
 }
 
