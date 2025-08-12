@@ -52,26 +52,6 @@ fn get_command_marker_regex() -> &'static Regex {
     })
 }
 
-#[allow(dead_code)]
-pub fn strip_ansi_codes(input: &[u8]) -> Vec<u8> {
-    let input_str = String::from_utf8_lossy(input);
-
-    let regex = get_ansi_regex();
-    let cleaned = regex.replace_all(&input_str, "");
-
-    cleaned.into_owned().into_bytes()
-}
-
-#[allow(dead_code)]
-pub fn strip_command_markers(input: &[u8]) -> Vec<u8> {
-    let input_str = String::from_utf8_lossy(input);
-
-    let regex = get_command_marker_regex();
-    let cleaned = regex.replace_all(&input_str, "");
-
-    cleaned.into_owned().into_bytes()
-}
-
 pub fn truncate_after_end_command(input: &[u8]) -> Vec<u8> {
     let input_str = String::from_utf8_lossy(input);
 
@@ -116,77 +96,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_strip_color_codes() {
-        let input = b"\x1b[31mRed text\x1b[0m Normal text";
-        let expected = b"Red text Normal text";
-        assert_eq!(strip_ansi_codes(input), expected);
-    }
-
-    #[test]
-    fn test_strip_cursor_movement() {
-        let input = b"Text\x1b[2AMove up\x1b[3BMove down";
-        let expected = b"TextMove upMove down";
-        assert_eq!(strip_ansi_codes(input), expected);
-    }
-
-    #[test]
-    fn test_strip_complex_sequences() {
-        let input = b"\x1b[1;31mBold Red\x1b[0m\x1b[2J\x1b[HClear and home";
-        let expected = b"Bold RedClear and home";
-        assert_eq!(strip_ansi_codes(input), expected);
-    }
-
-    #[test]
-    fn test_preserve_normal_text() {
-        let input = b"Normal text without escape codes";
-        let expected = b"Normal text without escape codes";
-        assert_eq!(strip_ansi_codes(input), expected);
-    }
-
-    #[test]
-    fn test_strip_osc_sequences() {
-        let input = b"Text\x1b]0;Window Title\x07More text";
-        let expected = b"TextMore text";
-        assert_eq!(strip_ansi_codes(input), expected);
-    }
-
-    #[test]
-    fn test_strip_backspace() {
-        let input = b"Text\x08Backspace";
-        let expected = b"TextBackspace";
-        assert_eq!(strip_ansi_codes(input), expected);
-    }
-
-    #[test]
-    fn test_strip_start_command_marker() {
-        let input = b"Normal output\nrenlog-start-command ls -la\nMore normal output";
-        let expected = b"Normal output\nMore normal output";
-        assert_eq!(strip_command_markers(input), expected);
-    }
-
-    #[test]
-    fn test_strip_end_command_marker() {
-        let input = b"Command output\nrenlog-end-command 0\nMore output";
-        let expected = b"Command output\nMore output";
-        assert_eq!(strip_command_markers(input), expected);
-    }
-
-    #[test]
-    fn test_strip_both_command_markers() {
-        let input =
-            b"Before\nrenlog-start-command echo test\nActual output\nrenlog-end-command 0\nAfter";
-        let expected = b"Before\nActual output\nAfter";
-        assert_eq!(strip_command_markers(input), expected);
-    }
-
-    #[test]
-    fn test_strip_command_markers_with_exit_codes() {
-        let input = b"Output\nrenlog-end-command 1\nrenlog-end-command 127\nMore output";
-        let expected = b"Output\nMore output";
-        assert_eq!(strip_command_markers(input), expected);
-    }
-
-    #[test]
     fn test_strip_ansi_and_command_markers_combined() {
         let input = b"\x1b[31mRed text\x1b[0m\nrenlog-start-command echo test\nNormal output\nrenlog-end-command 0\n\x1b[32mGreen text\x1b[0m";
         let expected = b"Red text\nNormal output\nGreen text";
@@ -197,15 +106,7 @@ mod tests {
     fn test_preserve_normal_text_with_command_filtering() {
         let input = b"Normal text without any markers or escape codes";
         let expected = b"Normal text without any markers or escape codes";
-        assert_eq!(strip_command_markers(input), expected);
         assert_eq!(strip_ansi_codes_and_command_markers(input), expected);
-    }
-
-    #[test]
-    fn test_command_markers_at_line_boundaries() {
-        let input = b"renlog-start-command test\nContent\nrenlog-end-command 0";
-        let expected = b"Content\n";
-        assert_eq!(strip_command_markers(input), expected);
     }
 
     #[test]
