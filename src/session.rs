@@ -203,7 +203,6 @@ impl Session {
 
         // Clone necessary data for the output thread
         let renlog_dir_for_output = self.renlog_dir.clone();
-        let pid_for_output = self.pid;
 
         // Forward stdin to PTY master with command detection
         log::debug!("Starting stdin->master forwarder thread with command detection");
@@ -225,7 +224,6 @@ impl Session {
                 stdout,
                 forward_pipe_clone,
                 &renlog_dir_for_output,
-                pid_for_output,
             ) {
                 log::error!("Error in unified PTY reader: {}", e);
                 eprintln!("Error in unified PTY reader: {e}");

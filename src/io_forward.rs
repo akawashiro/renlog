@@ -116,7 +116,6 @@ pub fn unified_pty_reader(
     mut stdout: File,
     mut forward_pipe: File,
     log_dir: &str,
-    pid: u32,
 ) -> Result<()> {
     log::debug!("Starting unified PTY reader with command detection and buffering");
     let mut buffer = [0u8; BUFFER_SIZE];
@@ -142,13 +141,9 @@ pub fn unified_pty_reader(
                 if !command_buffer.is_empty() {
                     if let Some(ref cmd) = current_command {
                         log::info!("Saving incomplete command buffer for: {}", cmd);
-                        if let Err(e) = command_logger::save_command_log(
-                            log_dir,
-                            pid,
-                            cmd,
-                            &command_buffer,
-                            None,
-                        ) {
+                        if let Err(e) =
+                            command_logger::save_command_log(log_dir, cmd, &command_buffer, None)
+                        {
                             log::error!("Failed to save incomplete command log: {}", e);
                         }
                     }
@@ -222,7 +217,6 @@ pub fn unified_pty_reader(
                             log::info!("Saving previous command log: {}", prev_cmd);
                             if let Err(e) = command_logger::save_command_log(
                                 log_dir,
-                                pid,
                                 prev_cmd,
                                 &command_buffer,
                                 None,
@@ -272,7 +266,6 @@ pub fn unified_pty_reader(
                             );
                             if let Err(e) = command_logger::save_command_log(
                                 log_dir,
-                                pid,
                                 cmd,
                                 &command_buffer,
                                 exit_status,

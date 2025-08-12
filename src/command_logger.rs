@@ -51,7 +51,6 @@ fn create_latest_symlink(log_dir: &str, filename: &str) -> Result<()> {
 
 pub fn save_command_log(
     log_dir: &str,
-    pid: u32,
     command: &str,
     data: &[u8],
     exit_status: Option<i32>,
@@ -65,7 +64,7 @@ pub fn save_command_log(
 
     let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S_%3f").to_string();
     let safe_command = sanitize_for_filename(command);
-    let filename = format!("{}_{}_cmd_{}.log", timestamp, pid, safe_command);
+    let filename = format!("{}_cmd_{}.log", timestamp, safe_command);
     let filepath = PathBuf::from(log_dir).join(&filename);
 
     log::info!(
@@ -89,10 +88,9 @@ pub fn save_command_log(
 
     // Write command metadata header
     let mut header = format!(
-        "# Renlog Command Log\n# Command: {}\n# Started: {}\n# PID: {}\n",
+        "# Renlog Command Log\n# Command: {}\n# Started: {}\n",
         command,
-        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC"),
-        pid
+        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
     );
 
     if let Some(status) = exit_status {

@@ -61,9 +61,8 @@ async fn main() -> Result<()> {
 
 async fn run_log_session(renlog_dir: &str, log_level: &str) -> Result<()> {
     // Construct the log file path in the renlog log directory
-    let pid = std::process::id();
     let timestamp = Utc::now().format("%Y%m%d_%H%M%S_%3f").to_string();
-    let log_filename = format!("renlog_{}_{}.log", timestamp, pid);
+    let log_filename = format!("renlog_{}.log", timestamp);
     let log_file_path = Path::new(renlog_dir).join(&log_filename);
     let log_file_str = log_file_path.to_string_lossy();
 
