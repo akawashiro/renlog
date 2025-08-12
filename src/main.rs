@@ -12,6 +12,7 @@ mod zsh_config;
 
 use chrono::Utc;
 use clap::{Parser, Subcommand};
+use command_logger::truncate_filename_to_limit;
 use session::Session;
 use signals::SignalHandler;
 use std::io::Result;
@@ -66,7 +67,8 @@ async fn main() -> Result<()> {
 async fn run_log_session(renlog_dir: &str, log_level: &str) -> Result<()> {
     // Construct the log file path in the renlog log directory
     let timestamp = Utc::now().format("%Y%m%d_%H%M%S_%3f").to_string();
-    let log_filename = format!("renlog_{}.log", timestamp);
+    let log_filename_raw = format!("renlog_{}.log", timestamp);
+    let log_filename = truncate_filename_to_limit(&log_filename_raw);
     let log_file_path = Path::new(renlog_dir).join(&log_filename);
     let log_file_str = log_file_path.to_string_lossy();
 
