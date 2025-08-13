@@ -46,6 +46,11 @@ enum Commands {
     Log {
         #[arg(long, help = "Directory path for renlog log files")]
         renlog_dir: String,
+        #[arg(
+            long,
+            help = "Custom shell command to execute (e.g., 'zsh --no-globalrcs')"
+        )]
+        cmd: Option<String>,
     },
     /// Show zsh configuration for shell integration
     ShowZshRc,
@@ -60,11 +65,17 @@ async fn main() -> Result<()> {
             show_zsh_rc();
             Ok(())
         }
-        Commands::Log { renlog_dir } => run_log_session(&renlog_dir, &args.log_level).await,
+        Commands::Log { renlog_dir, cmd } => {
+            run_log_session(&renlog_dir, &args.log_level, cmd.as_deref()).await
+        }
     }
 }
 
-async fn run_log_session(renlog_dir: &str, log_level: &str) -> Result<()> {
+async fn run_log_session(
+    renlog_dir: &str,
+    log_level: &str,
+    custom_cmd: Option<&str>,
+) -> Result<()> {
     // Construct the log file path in the renlog log directory
     let timestamp = Utc::now().format("%Y%m%d_%H%M%S_%3f").to_string();
     let log_filename = format!("renlog_{timestamp}.log");
@@ -93,7 +104,7 @@ async fn run_log_session(renlog_dir: &str, log_level: &str) -> Result<()> {
     let emergency_shell = EmergencyShell::new();
 
     // Try to start renlog session with emergency fallback
-    let result = run_renlog_session(renlog_dir).await;
+    let result = run_renlog_session(renlog_dir, custom_cmd).await;
 
     match result {
         Ok(exit_code) => {
@@ -123,8 +134,8 @@ async fn run_log_session(renlog_dir: &str, log_level: &str) -> Result<()> {
     }
 }
 
-async fn run_renlog_session(renlog_dir: &str) -> Result<i32> {
-    let mut session = Session::new(renlog_dir)?;
+async fn run_renlog_session(renlog_dir: &str, custom_cmd: Option<&str>) -> Result<i32> {
+    let mut session = Session::new(renlog_dir, custom_cmd)?;
 
     session.start_child().await?;
 

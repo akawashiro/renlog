@@ -24,13 +24,16 @@ pub struct Session {
     renlog_dir: String,
     exit_status: Arc<Mutex<Option<i32>>>,
     shutdown_flag: Arc<Mutex<bool>>,
+    custom_cmd: Option<String>,
 }
 
 impl Session {
-    pub fn new(renlog_dir: &str) -> Result<Self> {
+    pub fn new(renlog_dir: &str, custom_cmd: Option<&str>) -> Result<Self> {
         log::debug!("Creating new Session instance");
         let pid = std::process::id();
-        log::info!("Session initializing with PID={pid} renlog_dir={renlog_dir}");
+        log::info!(
+            "Session initializing with PID={pid} renlog_dir={renlog_dir} custom_cmd={custom_cmd:?}"
+        );
 
         // Create the log directory if it doesn't exist
         std::fs::create_dir_all(renlog_dir).map_err(|e| {
@@ -83,18 +86,36 @@ impl Session {
             renlog_dir: renlog_dir.to_string(),
             exit_status: Arc::new(Mutex::new(None)),
             shutdown_flag: Arc::new(Mutex::new(false)),
+            custom_cmd: custom_cmd.map(|s| s.to_string()),
         })
     }
 
     pub async fn start_child(&mut self) -> Result<()> {
         log::debug!("Starting child process");
-        // Set up environment variables for the child
-        let shell = env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
-        log::info!("Using shell: {shell}");
 
-        let mut cmd = Command::new("/bin/sh");
-        cmd.arg("-c");
-        cmd.arg(&shell);
+        let mut cmd = if let Some(custom_cmd) = &self.custom_cmd {
+            // Parse the custom command
+            let parts: Vec<&str> = custom_cmd.split_whitespace().collect();
+            if parts.is_empty() {
+                return Err(io::Error::other("Empty custom command provided"));
+            }
+
+            log::info!("Using custom command: {custom_cmd}");
+            let mut cmd = Command::new(parts[0]);
+            for arg in &parts[1..] {
+                cmd.arg(arg);
+            }
+            cmd
+        } else {
+            // Use default shell from environment
+            let shell = env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+            log::info!("Using shell: {shell}");
+
+            let mut cmd = Command::new("/bin/sh");
+            cmd.arg("-c");
+            cmd.arg(&shell);
+            cmd
+        };
 
         // Set environment variables that the shell integration would use
         cmd.env("RENLOG_PID", self.pid.to_string());
