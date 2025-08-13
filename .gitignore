@@ -1,3 +1,4 @@
 target
 zenlog
 *.log
+.claude
