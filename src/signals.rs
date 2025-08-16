@@ -1,4 +1,4 @@
-use signal_hook::consts::signal::{SIGCHLD, SIGHUP, SIGUSR2, SIGWINCH};
+use signal_hook::consts::signal::{SIGCHLD, SIGHUP, SIGINT, SIGQUIT, SIGTSTP, SIGUSR2, SIGWINCH};
 use signal_hook::iterator::Signals;
 use std::io::Result;
 use std::os::unix::io::RawFd;
@@ -21,7 +21,7 @@ pub struct SignalHandler {
 impl SignalHandler {
     pub fn new() -> Result<Self> {
         log::debug!("Initializing signal handler for all signals");
-        log::info!("Signal handler initialized for SIGCHLD, SIGWINCH, SIGHUP, SIGUSR2");
+        log::info!("Signal handler initialized for SIGCHLD, SIGWINCH, SIGHUP, SIGUSR2, SIGINT, SIGQUIT, SIGTSTP");
         Ok(SignalHandler {})
     }
 
@@ -34,7 +34,9 @@ impl SignalHandler {
             log::debug!("Starting signal handler thread");
 
             // Create the signals iterator inside the thread
-            let signals = match Signals::new([SIGCHLD, SIGWINCH, SIGHUP, SIGUSR2]) {
+            let signals = match Signals::new([
+                SIGCHLD, SIGWINCH, SIGHUP, SIGUSR2, SIGINT, SIGQUIT, SIGTSTP,
+            ]) {
                 Ok(s) => s,
                 Err(e) => {
                     log::error!("Failed to create signal handler: {e}");
@@ -129,6 +131,18 @@ impl SignalHandler {
                     log::debug!("Caught SIGUSR2 signal");
                     self.handle_sigusr2();
                 }
+                SIGINT => {
+                    log::debug!("Caught SIGINT signal");
+                    self.handle_sigint(&callbacks);
+                }
+                SIGQUIT => {
+                    log::debug!("Caught SIGQUIT signal");
+                    self.handle_sigquit(&callbacks);
+                }
+                SIGTSTP => {
+                    log::debug!("Caught SIGTSTP signal");
+                    self.handle_sigtstp(&callbacks);
+                }
                 _ => {
                     log::warn!("Received unexpected signal: {signal}");
                 }
@@ -191,5 +205,137 @@ impl SignalHandler {
         // You could add backtrace here if needed:
         // let bt = std::backtrace::Backtrace::capture();
         // println!("Backtrace:\n{}", bt);
+    }
+
+    fn handle_sigint(&self, callbacks: &SessionCallbacks) {
+        log::info!(
+            "Handling SIGINT signal - forwarding to child process group (renlog will not exit)"
+        );
+
+        let child_guard = callbacks.child.lock().unwrap();
+        if let Some(child) = child_guard.as_ref() {
+            let child_pid = child.id() as i32;
+            log::info!("Forwarding SIGINT to child process group PID: {child_pid}");
+
+            // Send signal to process group (negative PID) to reach all child processes
+            let result = unsafe { libc::kill(-child_pid, libc::SIGINT) };
+            if result != 0 {
+                log::warn!(
+                    "Failed to forward SIGINT to process group {}: errno {}",
+                    child_pid,
+                    result
+                );
+                // Fallback: try to send to individual process
+                let fallback_result = unsafe { libc::kill(child_pid, libc::SIGINT) };
+                if fallback_result != 0 {
+                    log::error!(
+                        "Fallback SIGINT to individual process {} also failed: errno {}",
+                        child_pid,
+                        fallback_result
+                    );
+                } else {
+                    log::info!(
+                        "SIGINT fallback to individual process {} succeeded",
+                        child_pid
+                    );
+                }
+            } else {
+                log::info!(
+                    "SIGINT forwarded to process group {} successfully",
+                    child_pid
+                );
+            }
+        } else {
+            log::info!("No child process to forward SIGINT to - ignoring signal");
+        }
+        // Note: We do NOT set shutdown_flag here - renlog continues running
+    }
+
+    fn handle_sigquit(&self, callbacks: &SessionCallbacks) {
+        log::info!(
+            "Handling SIGQUIT signal - forwarding to child process group (renlog will not exit)"
+        );
+
+        let child_guard = callbacks.child.lock().unwrap();
+        if let Some(child) = child_guard.as_ref() {
+            let child_pid = child.id() as i32;
+            log::info!("Forwarding SIGQUIT to child process group PID: {child_pid}");
+
+            // Send signal to process group (negative PID) to reach all child processes
+            let result = unsafe { libc::kill(-child_pid, libc::SIGQUIT) };
+            if result != 0 {
+                log::warn!(
+                    "Failed to forward SIGQUIT to process group {}: errno {}",
+                    child_pid,
+                    result
+                );
+                // Fallback: try to send to individual process
+                let fallback_result = unsafe { libc::kill(child_pid, libc::SIGQUIT) };
+                if fallback_result != 0 {
+                    log::error!(
+                        "Fallback SIGQUIT to individual process {} also failed: errno {}",
+                        child_pid,
+                        fallback_result
+                    );
+                } else {
+                    log::info!(
+                        "SIGQUIT fallback to individual process {} succeeded",
+                        child_pid
+                    );
+                }
+            } else {
+                log::info!(
+                    "SIGQUIT forwarded to process group {} successfully",
+                    child_pid
+                );
+            }
+        } else {
+            log::info!("No child process to forward SIGQUIT to - ignoring signal");
+        }
+        // Note: We do NOT set shutdown_flag here - renlog continues running
+    }
+
+    fn handle_sigtstp(&self, callbacks: &SessionCallbacks) {
+        log::info!(
+            "Handling SIGTSTP signal - forwarding to child process group (renlog will not exit)"
+        );
+
+        let child_guard = callbacks.child.lock().unwrap();
+        if let Some(child) = child_guard.as_ref() {
+            let child_pid = child.id() as i32;
+            log::info!("Forwarding SIGTSTP to child process group PID: {child_pid}");
+
+            // Send signal to process group (negative PID) to reach all child processes
+            let result = unsafe { libc::kill(-child_pid, libc::SIGTSTP) };
+            if result != 0 {
+                log::warn!(
+                    "Failed to forward SIGTSTP to process group {}: errno {}",
+                    child_pid,
+                    result
+                );
+                // Fallback: try to send to individual process
+                let fallback_result = unsafe { libc::kill(child_pid, libc::SIGTSTP) };
+                if fallback_result != 0 {
+                    log::error!(
+                        "Fallback SIGTSTP to individual process {} also failed: errno {}",
+                        child_pid,
+                        fallback_result
+                    );
+                } else {
+                    log::info!(
+                        "SIGTSTP fallback to individual process {} succeeded",
+                        child_pid
+                    );
+                }
+            } else {
+                log::info!(
+                    "SIGTSTP forwarded to process group {} successfully",
+                    child_pid
+                );
+            }
+        } else {
+            log::info!("No child process to forward SIGTSTP to - ignoring signal");
+        }
+        // Note: We do NOT set shutdown_flag here - renlog continues running
     }
 }
