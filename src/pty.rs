@@ -76,8 +76,8 @@ impl PtyPair {
     }
 }
 
-pub fn set_raw_mode(fd: RawFd) -> Result<Termios> {
-    log::debug!("Setting raw mode for fd: {fd}");
+pub fn set_cbreak_mode(fd: RawFd) -> Result<Termios> {
+    log::debug!("Setting cbreak mode for fd: {fd}");
     let owned_fd = unsafe { OwnedFd::from_raw_fd(fd) };
 
     let mut termios = tcgetattr(&owned_fd).map_err(|e| {
@@ -88,15 +88,24 @@ pub fn set_raw_mode(fd: RawFd) -> Result<Termios> {
     let original = termios.clone();
     log::debug!("Saved original terminal attributes for fd: {fd}");
 
-    nix::sys::termios::cfmakeraw(&mut termios);
-    log::debug!("Applied raw mode transformation to termios");
+    // Configure cbreak mode: disable ICANON and ECHO, but keep ISIG for signal handling
+    use nix::sys::termios::{LocalFlags, SpecialCharacterIndices};
+
+    termios.local_flags &= !(LocalFlags::ICANON | LocalFlags::ECHO);
+    termios.local_flags |= LocalFlags::ISIG; // Keep signal processing enabled
+
+    // Set for immediate character reading
+    termios.control_chars[SpecialCharacterIndices::VMIN as usize] = 1;
+    termios.control_chars[SpecialCharacterIndices::VTIME as usize] = 0;
+
+    log::debug!("Applied cbreak mode transformation to termios");
 
     tcsetattr(&owned_fd, SetArg::TCSANOW, &termios).map_err(|e| {
         log::error!("tcsetattr failed for fd {fd}: {e}");
         io::Error::other(format!("tcsetattr failed: {e}"))
     })?;
 
-    log::info!("Terminal fd {fd} set to raw mode successfully");
+    log::info!("Terminal fd {fd} set to cbreak mode successfully");
     std::mem::forget(owned_fd); // Don't close the fd
     Ok(original)
 }

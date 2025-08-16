@@ -1,6 +1,6 @@
 use crate::command_logger;
 use crate::io_forward::{simple_forward, unified_pty_reader};
-use crate::pty::{restore_termios, set_raw_mode, PtyPair};
+use crate::pty::{restore_termios, set_cbreak_mode, PtyPair};
 
 use nix::sys::termios::Termios;
 use nix::unistd;
@@ -44,20 +44,20 @@ impl Session {
         log::debug!("Creating PTY pair");
         let pty = PtyPair::new()?;
 
-        // Set stdin to raw mode (only if it's a TTY)
+        // Set stdin to cbreak mode (only if it's a TTY)
         log::debug!("Checking if stdin is a TTY");
         let original_termios = if nix::unistd::isatty(libc::STDIN_FILENO).unwrap_or(false) {
-            log::debug!("Setting stdin to raw mode");
-            Some(set_raw_mode(libc::STDIN_FILENO).map_err(|e| {
-                log::error!("Failed to set raw mode: {e}");
-                io::Error::other(format!("Failed to set raw mode: {e}"))
+            log::debug!("Setting stdin to cbreak mode");
+            Some(set_cbreak_mode(libc::STDIN_FILENO).map_err(|e| {
+                log::error!("Failed to set cbreak mode: {e}");
+                io::Error::other(format!("Failed to set cbreak mode: {e}"))
             })?)
         } else {
-            log::info!("Stdin is not a TTY, skipping raw mode setup");
+            log::info!("Stdin is not a TTY, skipping cbreak mode setup");
             None
         };
         if original_termios.is_some() {
-            log::info!("Terminal set to raw mode successfully");
+            log::info!("Terminal set to cbreak mode successfully");
         }
 
         println!("Renlog starting... [PID={pid}]");
