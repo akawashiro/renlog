@@ -1,5 +1,4 @@
 use crate::command_logger;
-use crate::fifo::FifoPair;
 use crate::io_forward::{simple_forward, unified_pty_reader};
 use crate::pty::{restore_termios, set_raw_mode, PtyPair};
 
@@ -8,7 +7,7 @@ use nix::unistd;
 use std::env;
 use std::fs::File;
 use std::io::{self, Result};
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::io::{FromRawFd, RawFd};
 use std::os::unix::process::CommandExt;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -17,7 +16,6 @@ use std::time::Duration;
 
 pub struct Session {
     pty: PtyPair,
-    fifos: FifoPair,
     child: Arc<Mutex<Option<Child>>>,
     original_termios: Option<Termios>,
     pid: u32,
@@ -46,15 +44,6 @@ impl Session {
         log::debug!("Creating PTY pair");
         let pty = PtyPair::new()?;
 
-        log::debug!("Creating FIFO pair");
-        let mut fifos = FifoPair::new(renlog_dir, pid)?;
-        fifos.open()?;
-        log::info!(
-            "FIFO pipes created and opened: forward={}, reverse={}",
-            fifos.forward_path_str(),
-            fifos.reverse_path_str()
-        );
-
         // Set stdin to raw mode (only if it's a TTY)
         log::debug!("Checking if stdin is a TTY");
         let original_termios = if nix::unistd::isatty(libc::STDIN_FILENO).unwrap_or(false) {
@@ -79,7 +68,6 @@ impl Session {
         log::info!("Session instance created successfully");
         Ok(Session {
             pty,
-            fifos,
             child: Arc::new(Mutex::new(None)),
             original_termios,
             pid,
@@ -190,18 +178,9 @@ impl Session {
         let stdin_fd = libc::STDIN_FILENO;
         let stdout_fd = libc::STDOUT_FILENO;
         let master_fd = self.pty.master_fd();
-        let forward_pipe_fd = self
-            .fifos
-            .forward_file
-            .as_ref()
-            .ok_or_else(|| {
-                log::error!("Forward pipe not opened");
-                io::Error::other("Forward pipe not opened")
-            })?
-            .as_raw_fd();
 
         log::debug!(
-            "File descriptors - stdin: {stdin_fd}, stdout: {stdout_fd}, master: {master_fd}, forward_pipe: {forward_pipe_fd}"
+            "File descriptors - stdin: {stdin_fd}, stdout: {stdout_fd}, master: {master_fd}"
         );
 
         // Create separate owned file descriptors by duplicating them
@@ -221,10 +200,6 @@ impl Session {
             log::error!("Failed to dup master2: {e}");
             io::Error::other(format!("Failed to dup master2: {e}"))
         })?;
-        let forward_dup = unistd::dup(forward_pipe_fd).map_err(|e| {
-            log::error!("Failed to dup forward pipe: {e}");
-            io::Error::other(format!("Failed to dup forward pipe: {e}"))
-        })?;
 
         log::debug!("All file descriptors duplicated successfully");
 
@@ -233,7 +208,6 @@ impl Session {
         let stdout = unsafe { File::from_raw_fd(stdout_dup) };
         let stdin_master = unsafe { File::from_raw_fd(master_dup1) };
         let master_for_output = unsafe { File::from_raw_fd(master_dup2) };
-        let forward_pipe_clone = unsafe { File::from_raw_fd(forward_dup) };
 
         // Clone necessary data for the output thread
         let renlog_dir_for_output = self.renlog_dir.clone();
@@ -253,12 +227,7 @@ impl Session {
         log::debug!("Starting unified PTY reader thread");
         thread::spawn(move || {
             log::debug!("Unified PTY reader thread started");
-            if let Err(e) = unified_pty_reader(
-                master_for_output,
-                stdout,
-                forward_pipe_clone,
-                &renlog_dir_for_output,
-            ) {
+            if let Err(e) = unified_pty_reader(master_for_output, stdout, &renlog_dir_for_output) {
                 log::error!("Error in unified PTY reader: {e}");
                 eprintln!("Error in unified PTY reader: {e}");
             }

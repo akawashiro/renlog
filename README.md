@@ -28,11 +28,6 @@ graph TB
         STDERR[User stderr]
     end
     
-    subgraph "FIFO Pipes"
-        FF[Forward FIFO<br/>renlog.PID.f.pipe]
-        RF[Reverse FIFO<br/>renlog.PID.r.pipe]
-    end
-    
     subgraph "Command Logging"
         CL[Command Logger<br/>Detects START/END markers]
         LF[Log Files<br/>renlog_*.log]
@@ -50,17 +45,12 @@ graph TB
     %% Output flow
     PM -->|Output Data| OT
     OT -->|Display| STDOUT
-    OT -->|Forward| FF
     OT -->|Command Detection| CL
     CL -->|Save Commands| LF
     
     %% Signal handling
     SH -->|SIGWINCH| PM
     SH -->|SIGTERM/SIGINT| MP
-    
-    %% Shell integration
-    SHELL -.->|Shell Integration<br/>Commands| RF
-    RF -.->|Future Use| MP
     
     style MP fill:#e1f5fe
     style SHELL fill:#fff3e0
@@ -78,7 +68,6 @@ graph TB
 
 2. **Shell Output Path**: The shell's stdout/stderr outputs to the PTY slave, which is read by the PTY master. A unified output reader thread (std::thread) then:
    - Displays the output to the user's stdout
-   - Forwards data to the forward FIFO pipe
    - Detects command boundaries using special markers
    - Logs command output to separate files
 
@@ -88,8 +77,4 @@ graph TB
    - SIGHUP for session hangup
    - SIGUSR2 for debug information
 
-4. **FIFO Pipes**: Named pipes enable bidirectional communication:
-   - Forward pipe: Carries output data for external processing
-   - Reverse pipe: Reserved for future shell integration features
-
-5. **Command Logging**: The output reader detects START_COMMAND and END_COMMAND markers in the stream, buffering and saving each command's output to individual log files.
+4. **Command Logging**: The output reader detects START_COMMAND and END_COMMAND markers in the stream, buffering and saving each command's output to individual log files.

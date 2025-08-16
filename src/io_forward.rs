@@ -51,17 +51,11 @@ pub fn simple_forward(mut input: File, mut output: File) -> Result<()> {
 }
 
 // Unified PTY reader that handles both output forwarding and command detection/logging
-pub fn unified_pty_reader(
-    mut input: File,
-    mut stdout: File,
-    mut forward_pipe: File,
-    log_dir: &str,
-) -> Result<()> {
+pub fn unified_pty_reader(mut input: File, mut stdout: File, log_dir: &str) -> Result<()> {
     log::debug!("Starting unified PTY reader with command detection and buffering");
     let mut buffer = [0u8; BUFFER_SIZE];
     let mut total_bytes_read = 0u64;
     let mut stdout_errors = 0u32;
-    let mut forward_pipe_errors = 0u32;
 
     // Buffer for marker detection
     let mut data_buffer = Vec::new();
@@ -73,7 +67,7 @@ pub fn unified_pty_reader(
         match input.read(&mut buffer) {
             Ok(0) => {
                 log::debug!(
-                    "unified_pty_reader: EOF reached, total bytes read: {total_bytes_read}, stdout_errors: {stdout_errors}, forward_pipe_errors: {forward_pipe_errors}"
+                    "unified_pty_reader: EOF reached, total bytes read: {total_bytes_read}, stdout_errors: {stdout_errors}"
                 );
 
                 // Save any remaining buffered command data
@@ -109,20 +103,6 @@ pub fn unified_pty_reader(
                     stdout_errors += 1;
                     log::warn!(
                         "unified_pty_reader: Failed to flush stdout (error #{stdout_errors}): {e}"
-                    );
-                }
-
-                // Write to forward pipe immediately
-                if let Err(e) = forward_pipe.write_all(data) {
-                    forward_pipe_errors += 1;
-                    log::warn!(
-                        "unified_pty_reader: Failed to write to forward pipe (error #{forward_pipe_errors}): {e}"
-                    );
-                }
-                if let Err(e) = forward_pipe.flush() {
-                    forward_pipe_errors += 1;
-                    log::warn!(
-                        "unified_pty_reader: Failed to flush forward pipe (error #{forward_pipe_errors}): {e}"
                     );
                 }
 
@@ -254,7 +234,7 @@ pub fn unified_pty_reader(
     }
 
     log::info!(
-        "unified_pty_reader completed: {total_bytes_read} bytes read, {stdout_errors} stdout errors, {forward_pipe_errors} forward pipe errors"
+        "unified_pty_reader completed: {total_bytes_read} bytes read, {stdout_errors} stdout errors"
     );
     Ok(())
 }

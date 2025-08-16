@@ -1,6 +1,5 @@
 mod command_logger;
 mod emergency_shell;
-mod fifo;
 mod io_forward;
 mod log_processor;
 mod logging;
