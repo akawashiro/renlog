@@ -71,23 +71,37 @@ impl SignalHandler {
                 SIGWINCH => {
                     log::info!("Caught SIGWINCH signal - handling terminal resize");
 
-                    // First, forward the signal to the child process
+                    // First, forward the signal to the child process group
                     let child_guard = callbacks.child.lock().unwrap();
                     if let Some(child) = child_guard.as_ref() {
                         let child_pid = child.id() as i32;
-                        log::info!("Forwarding SIGWINCH to child process PID: {child_pid}");
+                        log::info!("Forwarding SIGWINCH to child process group PID: {child_pid}");
 
-                        // Use libc::kill to send SIGWINCH to child process
-                        let result = unsafe { libc::kill(child_pid, libc::SIGWINCH) };
+                        // Send signal to process group (negative PID) to reach all child processes
+                        let result = unsafe { libc::kill(-child_pid, libc::SIGWINCH) };
                         if result != 0 {
                             log::warn!(
-                                "Failed to forward SIGWINCH to child process PID {}: errno {}",
+                                "Failed to forward SIGWINCH to process group {}: errno {}",
                                 child_pid,
                                 result
                             );
+                            // Fallback: try to send to individual process
+                            let fallback_result = unsafe { libc::kill(child_pid, libc::SIGWINCH) };
+                            if fallback_result != 0 {
+                                log::error!(
+                                    "Fallback SIGWINCH to individual process {} also failed: errno {}",
+                                    child_pid,
+                                    fallback_result
+                                );
+                            } else {
+                                log::info!(
+                                    "SIGWINCH fallback to individual process {} succeeded",
+                                    child_pid
+                                );
+                            }
                         } else {
                             log::info!(
-                                "SIGWINCH forwarded to child process PID {} successfully",
+                                "SIGWINCH forwarded to process group {} successfully",
                                 child_pid
                             );
                         }
