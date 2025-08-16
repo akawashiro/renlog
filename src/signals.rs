@@ -1,11 +1,10 @@
-use futures::StreamExt;
 use signal_hook::consts::signal::{SIGCHLD, SIGHUP, SIGUSR2, SIGWINCH};
-use signal_hook_tokio::Signals;
+use signal_hook::iterator::Signals;
 use std::io::Result;
 use std::os::unix::io::RawFd;
 use std::process::Child;
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use std::thread::{self, JoinHandle};
 
 use crate::pty::{propagate_terminal_size, propagate_terminal_size_sync};
 
@@ -16,36 +15,62 @@ pub struct SessionCallbacks {
 }
 
 pub struct SignalHandler {
-    signals: Signals,
+    // We'll create the signals iterator when starting the handler thread
 }
 
 impl SignalHandler {
     pub fn new() -> Result<Self> {
         log::debug!("Initializing signal handler for all signals");
-
-        let signals = Signals::new([SIGCHLD, SIGWINCH, SIGHUP, SIGUSR2]).map_err(|e| {
-            log::error!("Failed to create signal handler: {e}");
-            std::io::Error::other(format!("Failed to create signal handler: {e}"))
-        })?;
-
-        log::info!("Signal handler created for SIGCHLD, SIGWINCH, SIGHUP, SIGUSR2");
-        Ok(SignalHandler { signals })
+        log::info!("Signal handler initialized for SIGCHLD, SIGWINCH, SIGHUP, SIGUSR2");
+        Ok(SignalHandler {})
     }
 
-    pub async fn handle_signals(
-        mut self,
+    pub fn start_handler_thread(
+        self,
+        master_fd: Arc<Mutex<Option<RawFd>>>,
+        callbacks: SessionCallbacks,
+    ) -> JoinHandle<()> {
+        thread::spawn(move || {
+            log::debug!("Starting signal handler thread");
+
+            // Create the signals iterator inside the thread
+            let signals = match Signals::new([SIGCHLD, SIGWINCH, SIGHUP, SIGUSR2]) {
+                Ok(s) => s,
+                Err(e) => {
+                    log::error!("Failed to create signal handler: {e}");
+                    return;
+                }
+            };
+
+            self.handle_signals_sync(signals, master_fd, callbacks);
+            log::debug!("Signal handler thread ending");
+        })
+    }
+
+    fn handle_signals_sync(
+        self,
+        mut signals: Signals,
         master_fd: Arc<Mutex<Option<RawFd>>>,
         callbacks: SessionCallbacks,
     ) {
         log::debug!("Starting signal handler loop");
 
-        while let Some(signal) = self.signals.next().await {
+        for signal in signals.forever() {
+            // Check if we should exit (master_fd is None)
+            {
+                let fd_guard = master_fd.lock().unwrap();
+                if fd_guard.is_none() {
+                    log::debug!("Master fd is None, exiting signal handler");
+                    break;
+                }
+            }
+
             match signal {
                 SIGWINCH => {
                     log::info!("Caught SIGWINCH signal - handling terminal resize");
 
                     // First, forward the signal to the child process
-                    let child_guard = callbacks.child.lock().await;
+                    let child_guard = callbacks.child.lock().unwrap();
                     if let Some(child) = child_guard.as_ref() {
                         let child_pid = child.id() as i32;
                         log::info!("Forwarding SIGWINCH to child process PID: {child_pid}");
@@ -70,7 +95,7 @@ impl SignalHandler {
                     drop(child_guard);
 
                     // Then, propagate terminal size to our PTY master
-                    let master_fd_guard = master_fd.lock().await;
+                    let master_fd_guard = master_fd.lock().unwrap();
                     if let Some(fd) = *master_fd_guard {
                         log::debug!("Propagating terminal size to PTY master fd: {fd}");
 
@@ -94,15 +119,15 @@ impl SignalHandler {
                 }
                 SIGCHLD => {
                     log::debug!("Caught SIGCHLD signal");
-                    self.handle_sigchld(&callbacks).await;
+                    self.handle_sigchld(&callbacks);
                 }
                 SIGHUP => {
                     log::debug!("Caught SIGHUP signal");
-                    self.handle_sighup(&callbacks).await;
+                    self.handle_sighup(&callbacks);
                 }
                 SIGUSR2 => {
                     log::debug!("Caught SIGUSR2 signal");
-                    self.handle_sigusr2().await;
+                    self.handle_sigusr2();
                 }
                 _ => {
                     log::warn!("Received unexpected signal: {signal}");
@@ -113,21 +138,21 @@ impl SignalHandler {
         log::debug!("Signal handler loop ended");
     }
 
-    async fn handle_sigchld(&self, callbacks: &SessionCallbacks) {
+    fn handle_sigchld(&self, callbacks: &SessionCallbacks) {
         log::info!("Handling child process termination");
 
-        let mut child_guard = callbacks.child.lock().await;
+        let mut child_guard = callbacks.child.lock().unwrap();
         if let Some(mut child) = child_guard.take() {
             match child.try_wait() {
                 Ok(Some(status)) => {
                     let exit_code = status.code().unwrap_or(-1);
                     log::info!("Child process exited with status: {exit_code}");
 
-                    let mut exit_status_guard = callbacks.exit_status.lock().await;
+                    let mut exit_status_guard = callbacks.exit_status.lock().unwrap();
                     *exit_status_guard = Some(exit_code);
 
                     // Signal shutdown
-                    let mut shutdown_guard = callbacks.shutdown_flag.lock().await;
+                    let mut shutdown_guard = callbacks.shutdown_flag.lock().unwrap();
                     *shutdown_guard = true;
                 }
                 Ok(None) => {
@@ -136,10 +161,10 @@ impl SignalHandler {
                 }
                 Err(e) => {
                     log::error!("Error checking child process status: {e}");
-                    let mut exit_status_guard = callbacks.exit_status.lock().await;
+                    let mut exit_status_guard = callbacks.exit_status.lock().unwrap();
                     *exit_status_guard = Some(255);
 
-                    let mut shutdown_guard = callbacks.shutdown_flag.lock().await;
+                    let mut shutdown_guard = callbacks.shutdown_flag.lock().unwrap();
                     *shutdown_guard = true;
                 }
             }
@@ -148,15 +173,15 @@ impl SignalHandler {
         }
     }
 
-    async fn handle_sighup(&self, callbacks: &SessionCallbacks) {
+    fn handle_sighup(&self, callbacks: &SessionCallbacks) {
         log::info!("Handling session hangup - initiating graceful shutdown");
 
         // Signal graceful shutdown
-        let mut shutdown_guard = callbacks.shutdown_flag.lock().await;
+        let mut shutdown_guard = callbacks.shutdown_flag.lock().unwrap();
         *shutdown_guard = true;
     }
 
-    async fn handle_sigusr2(&self) {
+    fn handle_sigusr2(&self) {
         log::info!("Caught SIGUSR2; dumping stack traces");
 
         // In Rust, we can use backtrace or just log the signal receipt

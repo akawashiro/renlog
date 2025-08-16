@@ -17,9 +17,8 @@ use session::Session;
 use signals::SignalHandler;
 use std::io::Result;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use symlink_utils::create_or_update_symlink;
-use tokio::sync::Mutex;
 use zsh_config::show_zsh_rc;
 
 #[derive(Parser)]
@@ -56,8 +55,7 @@ enum Commands {
     ShowZshRc,
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     let args = Args::parse();
 
     match args.command {
@@ -66,16 +64,12 @@ async fn main() -> Result<()> {
             Ok(())
         }
         Commands::Log { renlog_dir, cmd } => {
-            run_log_session(&renlog_dir, &args.log_level, cmd.as_deref()).await
+            run_log_session(&renlog_dir, &args.log_level, cmd.as_deref())
         }
     }
 }
 
-async fn run_log_session(
-    renlog_dir: &str,
-    log_level: &str,
-    custom_cmd: Option<&str>,
-) -> Result<()> {
+fn run_log_session(renlog_dir: &str, log_level: &str, custom_cmd: Option<&str>) -> Result<()> {
     // Construct the log file path in the renlog log directory
     let timestamp = Utc::now().format("%Y%m%d_%H%M%S_%3f").to_string();
     let log_filename = format!("renlog_{timestamp}.log");
@@ -104,7 +98,7 @@ async fn run_log_session(
     let emergency_shell = EmergencyShell::new();
 
     // Try to start renlog session with emergency fallback
-    let result = run_renlog_session(renlog_dir, custom_cmd).await;
+    let result = run_renlog_session(renlog_dir, custom_cmd);
 
     match result {
         Ok(exit_code) => {
@@ -134,10 +128,10 @@ async fn run_log_session(
     }
 }
 
-async fn run_renlog_session(renlog_dir: &str, custom_cmd: Option<&str>) -> Result<i32> {
+fn run_renlog_session(renlog_dir: &str, custom_cmd: Option<&str>) -> Result<i32> {
     let mut session = Session::new(renlog_dir, custom_cmd)?;
 
-    session.start_child().await?;
+    session.start_child()?;
 
     session.start_forwarders()?;
 
@@ -146,22 +140,24 @@ async fn run_renlog_session(renlog_dir: &str, custom_cmd: Option<&str>) -> Resul
     let session_callbacks = session.get_session_callbacks();
     let signal_handler = SignalHandler::new()?;
 
-    // Spawn signal handler task
-    let signal_task =
-        tokio::spawn(signal_handler.handle_signals(master_fd.clone(), session_callbacks));
+    // Spawn signal handler thread
+    let signal_thread = signal_handler.start_handler_thread(master_fd.clone(), session_callbacks);
 
     println!("Session initialized. Type 'exit' to quit.");
 
-    let exit_code = session.wait_for_child().await?;
+    let exit_code = session.wait_for_child()?;
 
     // Clear the master fd to stop signal handling
     {
-        let mut fd_guard = master_fd.lock().await;
+        let mut fd_guard = master_fd.lock().unwrap();
         *fd_guard = None;
     }
 
-    // Cancel signal handler task
-    signal_task.abort();
+    // The signal handler thread will exit when it detects the fd is None
+    // Wait for it to finish
+    if let Err(e) = signal_thread.join() {
+        log::warn!("Signal handler thread panicked: {:?}", e);
+    }
 
     Ok(exit_code)
 }

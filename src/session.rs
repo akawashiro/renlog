@@ -11,9 +11,9 @@ use std::io::{self, Result};
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::process::CommandExt;
 use std::process::{Child, Command, Stdio};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
-use tokio::sync::Mutex;
+use std::time::Duration;
 
 pub struct Session {
     pty: PtyPair,
@@ -90,7 +90,7 @@ impl Session {
         })
     }
 
-    pub async fn start_child(&mut self) -> Result<()> {
+    pub fn start_child(&mut self) -> Result<()> {
         log::debug!("Starting child process");
 
         let mut cmd = if let Some(custom_cmd) = &self.custom_cmd {
@@ -176,7 +176,7 @@ impl Session {
         let child_pid = child.id();
 
         // Store child in Arc<Mutex<>>
-        let mut child_guard = self.child.lock().await;
+        let mut child_guard = self.child.lock().unwrap();
         *child_guard = Some(child);
 
         log::info!("Child process started with PID: {child_pid}");
@@ -269,12 +269,12 @@ impl Session {
         Ok(())
     }
 
-    pub async fn wait_for_child(&mut self) -> Result<i32> {
+    pub fn wait_for_child(&mut self) -> Result<i32> {
         log::debug!("Waiting for child process to exit");
 
         // Wait for shutdown flag to be set by signal handler
         loop {
-            let shutdown_guard = self.shutdown_flag.lock().await;
+            let shutdown_guard = self.shutdown_flag.lock().unwrap();
             if *shutdown_guard {
                 drop(shutdown_guard);
                 break;
@@ -282,11 +282,11 @@ impl Session {
             drop(shutdown_guard);
 
             // Sleep briefly before checking again
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            thread::sleep(Duration::from_millis(100));
         }
 
         // Get the exit status set by the signal handler
-        let exit_status_guard = self.exit_status.lock().await;
+        let exit_status_guard = self.exit_status.lock().unwrap();
         let exit_code = exit_status_guard.unwrap_or(0);
         drop(exit_status_guard);
 
@@ -323,8 +323,7 @@ impl Drop for Session {
         }
 
         // Kill child process if still running
-        // Note: We can't use async in Drop, so we use try_lock
-        if let Ok(mut child_guard) = self.child.try_lock() {
+        if let Ok(mut child_guard) = self.child.lock() {
             if let Some(mut child) = child_guard.take() {
                 log::debug!("Killing child process with PID: {}", child.id());
                 if let Err(e) = child.kill() {
