@@ -94,6 +94,7 @@ Renlog is a Rust reimplementation of [zenlog](https://github.com/omakoto/zenlog)
 graph TB
     subgraph "Zenlog (Go)"
         ZMP[Main Process]
+        ZSH[Signal Handler Goroutine<br/>SIGCHLD/SIGWINCH/SIGHUP/SIGUSR2]
         ZGR1[Goroutine: Input Forward]
         ZGR2[Goroutine: Output Tee]
         ZGR3[Goroutine: Log Processor]
@@ -134,11 +135,14 @@ graph TB
     ZGR3 --> ZCMD
     ZGR3 --> ZPID
     ZGR3 --> ZTAG
+    ZSH -->|SIGWINCH| ZPM
+    ZSH -->|SIGCHLD/SIGHUP/SIGUSR2| ZMP
     
     style ZMP fill:#fff2cc
     style ZSHELL fill:#d5e8d4
     style ZFF fill:#f8cecc
     style ZSAN fill:#e1d5e7
+    style ZSH fill:#fce4ec
 ```
 
 #### Renlog (Rust Implementation)
@@ -187,11 +191,11 @@ graph TB
 | **Language** | Go | Rust |
 | **Concurrency Model** | Goroutines | std::thread |
 | **PTY Management** | creack/pty library | nix crate |
-| **Signal Handling** | Basic | Enhanced (SIGINT/SIGTERM forwarding) |
+| **Signal Handling** | None (no SIGINT/SIGTERM handling) | ✅ Full SIGINT/SIGTERM forwarding |
 | **FIFO Pipes** | ✅ Used for communication | ❌ Removed (unused) |
 | **Log Structure** | Complex (SAN/RAW/ENV/cmds/pids/tags) | Simple (individual command logs) |
 | **Command Detection** | Shell hooks + markers | START/END markers |
-| **Interactive Apps** | Limited Ctrl+C support | ✅ Full Ctrl+C support |
+| **Interactive Apps** | ❌ Ctrl+C issues with interactive apps | ✅ Full Ctrl+C support |
 | **Memory Safety** | Garbage collected | Zero-cost abstractions |
 | **Binary Size** | Larger (Go runtime) | Smaller (static linking) |
 | **Startup Time** | Slower (GC initialization) | Faster (compiled binary) |
@@ -211,8 +215,9 @@ graph TB
 - **Renlog** uses Rust's zero-cost abstractions and manual memory management for predictable performance
 
 #### **Signal Handling**
-- **Zenlog** has basic signal handling that may not work well with interactive applications
-- **Renlog** implements comprehensive signal forwarding, making Ctrl+C work properly with `top`, `htop`, `vim`, etc.
+- **Zenlog** has **NO** SIGINT/SIGTERM handling - these signals are completely ignored by zenlog itself
+- **Renlog** implements comprehensive signal forwarding, intercepting SIGINT/SIGTERM and forwarding them to child processes
+- This means **interactive applications like `top`, `htop`, `vim` cannot be properly terminated with Ctrl+C in zenlog**, but work perfectly in renlog
 
 #### **Architecture Philosophy**
 - **Zenlog** uses FIFO pipes and complex async communication patterns
@@ -224,10 +229,12 @@ graph TB
 - Complex log organization with per-command/PID/tag directories
 - Advanced shell integration features
 - Mature ecosystem with extensive tooling
+- **Note**: Interactive applications (`top`, `htop`, `vim`) may not work properly due to missing signal handling
 
 **Choose Renlog if you want**:
+- **Working Ctrl+C for interactive applications** (major advantage over zenlog)
 - Simpler, more maintainable codebase
 - Better performance and lower resource usage
-- Proper signal handling for interactive applications
-- Modern Rust safety guarantees
+- Modern Rust memory safety guarantees
+- Faster startup times and smaller binaries
 - Easier debugging and modification
