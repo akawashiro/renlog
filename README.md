@@ -168,11 +168,15 @@ graph TB
         RLF[Log Files<br/>renlog_*.log]
     end
     
+    subgraph "User Terminal"
+        RSTDOUT[stdout]
+    end
+    
     RST -->|stdin| RPM
     RPM <--> RPS
     RPS <--> RSHELL
     RPM -->|output| ROT
-    ROT -->|display| STDOUT
+    ROT -->|display| RSTDOUT
     ROT -->|detect commands| RLF
     RSH -->|SIGWINCH| RPM
     RSH -->|SIGINT/SIGTERM| RSHELL
