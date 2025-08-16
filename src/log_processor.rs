@@ -71,7 +71,7 @@ pub fn truncate_after_end_command(input: &[u8]) -> Vec<u8> {
     }
 }
 
-pub fn strip_ansi_codes_and_command_markers(input: &[u8]) -> Vec<u8> {
+fn strip_ansi_codes_and_command_markers(input: &[u8]) -> Vec<u8> {
     let input_str = String::from_utf8_lossy(input);
 
     let ansi_regex = get_ansi_regex();
