@@ -6,11 +6,11 @@ Renlog is a Rust re-implementation of [zenlog](https://github.com/omakoto/zenlog
 
 ```mermaid
 graph TB
-    subgraph "Main Process"
+    subgraph "Main Process (Synchronous)"
         MP[Main Thread]
-        SH[Signal Handler Thread]
-        ST[Stdin Forwarder Thread]
-        OT[Output Reader Thread]
+        SH[Signal Handler Thread<br/>std::thread]
+        ST[Stdin Forwarder Thread<br/>std::thread]
+        OT[Output Reader Thread<br/>std::thread]
     end
     
     subgraph "PTY (Pseudo-Terminal)"
@@ -74,17 +74,19 @@ graph TB
 
 ### Data Flow Description
 
-1. **User Input Path**: User input from stdin is forwarded by a dedicated thread to the PTY master, which passes it to the PTY slave connected to the shell process.
+1. **User Input Path**: User input from stdin is forwarded by a dedicated std::thread to the PTY master, which passes it to the PTY slave connected to the shell process.
 
-2. **Shell Output Path**: The shell's stdout/stderr outputs to the PTY slave, which is read by the PTY master. A unified output reader thread then:
+2. **Shell Output Path**: The shell's stdout/stderr outputs to the PTY slave, which is read by the PTY master. A unified output reader thread (std::thread) then:
    - Displays the output to the user's stdout
    - Forwards data to the forward FIFO pipe
    - Detects command boundaries using special markers
    - Logs command output to separate files
 
-3. **Signal Handling**: A separate thread handles:
+3. **Signal Handling**: A dedicated std::thread using signal-hook handles signals synchronously:
    - SIGWINCH for terminal window resize events
-   - SIGTERM/SIGINT for graceful shutdown
+   - SIGCHLD for child process termination
+   - SIGHUP for session hangup
+   - SIGUSR2 for debug information
 
 4. **FIFO Pipes**: Named pipes enable bidirectional communication:
    - Forward pipe: Carries output data for external processing
