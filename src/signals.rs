@@ -1,4 +1,4 @@
-use signal_hook::consts::signal::{SIGCHLD, SIGHUP, SIGINT, SIGTERM, SIGUSR2, SIGWINCH};
+use signal_hook::consts::signal::{SIGCHLD, SIGHUP, SIGUSR2, SIGWINCH};
 use signal_hook::iterator::Signals;
 use std::io::Result;
 use std::os::unix::io::RawFd;
@@ -21,9 +21,7 @@ pub struct SignalHandler {
 impl SignalHandler {
     pub fn new() -> Result<Self> {
         log::debug!("Initializing signal handler for all signals");
-        log::info!(
-            "Signal handler initialized for SIGCHLD, SIGWINCH, SIGHUP, SIGUSR2, SIGINT, SIGTERM"
-        );
+        log::info!("Signal handler initialized for SIGCHLD, SIGWINCH, SIGHUP, SIGUSR2");
         Ok(SignalHandler {})
     }
 
@@ -36,8 +34,7 @@ impl SignalHandler {
             log::debug!("Starting signal handler thread");
 
             // Create the signals iterator inside the thread
-            let signals = match Signals::new([SIGCHLD, SIGWINCH, SIGHUP, SIGUSR2, SIGINT, SIGTERM])
-            {
+            let signals = match Signals::new([SIGCHLD, SIGWINCH, SIGHUP, SIGUSR2]) {
                 Ok(s) => s,
                 Err(e) => {
                     log::error!("Failed to create signal handler: {e}");
@@ -132,14 +129,6 @@ impl SignalHandler {
                     log::debug!("Caught SIGUSR2 signal");
                     self.handle_sigusr2();
                 }
-                SIGINT => {
-                    log::debug!("Caught SIGINT signal");
-                    self.handle_sigint(&callbacks);
-                }
-                SIGTERM => {
-                    log::debug!("Caught SIGTERM signal");
-                    self.handle_sigterm(&callbacks);
-                }
                 _ => {
                     log::warn!("Received unexpected signal: {signal}");
                 }
@@ -202,65 +191,5 @@ impl SignalHandler {
         // You could add backtrace here if needed:
         // let bt = std::backtrace::Backtrace::capture();
         // println!("Backtrace:\n{}", bt);
-    }
-
-    fn handle_sigint(&self, callbacks: &SessionCallbacks) {
-        log::info!("Handling SIGINT signal - forwarding to child process");
-
-        let child_guard = callbacks.child.lock().unwrap();
-        if let Some(child) = child_guard.as_ref() {
-            let child_pid = child.id() as i32;
-            log::info!("Forwarding SIGINT to child process PID: {child_pid}");
-
-            // Use libc::kill to send SIGINT to child process
-            let result = unsafe { libc::kill(child_pid, libc::SIGINT) };
-            if result != 0 {
-                log::warn!(
-                    "Failed to forward SIGINT to child process PID {}: errno {}",
-                    child_pid,
-                    result
-                );
-            } else {
-                log::info!(
-                    "SIGINT forwarded to child process PID {} successfully",
-                    child_pid
-                );
-            }
-        } else {
-            log::info!("No child process to forward SIGINT to - allowing renlog to exit");
-            // If no child process, allow the signal to terminate renlog
-            let mut shutdown_guard = callbacks.shutdown_flag.lock().unwrap();
-            *shutdown_guard = true;
-        }
-    }
-
-    fn handle_sigterm(&self, callbacks: &SessionCallbacks) {
-        log::info!("Handling SIGTERM signal - forwarding to child process");
-
-        let child_guard = callbacks.child.lock().unwrap();
-        if let Some(child) = child_guard.as_ref() {
-            let child_pid = child.id() as i32;
-            log::info!("Forwarding SIGTERM to child process PID: {child_pid}");
-
-            // Use libc::kill to send SIGTERM to child process
-            let result = unsafe { libc::kill(child_pid, libc::SIGTERM) };
-            if result != 0 {
-                log::warn!(
-                    "Failed to forward SIGTERM to child process PID {}: errno {}",
-                    child_pid,
-                    result
-                );
-            } else {
-                log::info!(
-                    "SIGTERM forwarded to child process PID {} successfully",
-                    child_pid
-                );
-            }
-        } else {
-            log::info!("No child process to forward SIGTERM to - allowing renlog to exit");
-            // If no child process, allow the signal to terminate renlog
-            let mut shutdown_guard = callbacks.shutdown_flag.lock().unwrap();
-            *shutdown_guard = true;
-        }
     }
 }
