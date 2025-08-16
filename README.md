@@ -50,7 +50,8 @@ graph TB
     
     %% Signal handling
     SH -->|SIGWINCH| PM
-    SH -->|SIGTERM/SIGINT| MP
+    SH -->|SIGINT/SIGTERM| SHELL
+    SH -->|SIGCHLD/SIGHUP/SIGUSR2| MP
     
     style MP fill:#e1f5fe
     style SHELL fill:#fff3e0
@@ -72,9 +73,12 @@ graph TB
    - Logs command output to separate files
 
 3. **Signal Handling**: A dedicated std::thread using signal-hook handles signals synchronously:
-   - SIGWINCH for terminal window resize events
-   - SIGCHLD for child process termination
-   - SIGHUP for session hangup
-   - SIGUSR2 for debug information
+   - SIGWINCH for terminal window resize events (forwarded to PTY master)
+   - SIGCHLD for child process termination (handled by main process)
+   - SIGHUP for session hangup (handled by main process)
+   - SIGUSR2 for debug information (handled by main process)
+   - SIGINT/SIGTERM for interrupt/termination (forwarded to child process)
 
-4. **Command Logging**: The output reader detects START_COMMAND and END_COMMAND markers in the stream, buffering and saving each command's output to individual log files.
+4. **Signal Forwarding**: When users press Ctrl+C or send termination signals, the signal handler forwards SIGINT/SIGTERM to the child process, enabling proper termination of interactive applications like `top`, `htop`, `vim`, etc.
+
+5. **Command Logging**: The output reader detects START_COMMAND and END_COMMAND markers in the stream, buffering and saving each command's output to individual log files.
