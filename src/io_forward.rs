@@ -51,7 +51,12 @@ pub fn simple_forward(mut input: File, mut output: File) -> Result<()> {
 }
 
 // Unified PTY reader that handles both output forwarding and command detection/logging
-pub fn unified_pty_reader(mut input: File, mut stdout: File, log_dir: &str) -> Result<()> {
+pub fn unified_pty_reader(
+    mut input: File,
+    mut stdout: File,
+    log_dir: &str,
+    pid: u32,
+) -> Result<()> {
     log::debug!("Starting unified PTY reader with command detection and buffering");
     let mut buffer = [0u8; BUFFER_SIZE];
     let mut total_bytes_read = 0u64;
@@ -74,8 +79,13 @@ pub fn unified_pty_reader(mut input: File, mut stdout: File, log_dir: &str) -> R
                 if !command_buffer.is_empty() {
                     if let Some(ref cmd) = current_command {
                         log::info!("Saving incomplete command buffer for: {cmd}");
-                        match command_logger::save_command_log(log_dir, cmd, &command_buffer, None)
-                        {
+                        match command_logger::save_command_log(
+                            log_dir,
+                            cmd,
+                            &command_buffer,
+                            None,
+                            pid,
+                        ) {
                             Ok(log_file_path) => {
                                 log::info!("Saved incomplete command log to: {log_file_path}");
                             }
@@ -135,6 +145,7 @@ pub fn unified_pty_reader(mut input: File, mut stdout: File, log_dir: &str) -> R
                                 prev_cmd,
                                 &command_buffer,
                                 None,
+                                pid,
                             ) {
                                 Ok(log_file_path) => {
                                     log::info!("Saved previous command log to: {log_file_path}");
@@ -185,6 +196,7 @@ pub fn unified_pty_reader(mut input: File, mut stdout: File, log_dir: &str) -> R
                                 cmd,
                                 &command_buffer,
                                 exit_status,
+                                pid,
                             ) {
                                 Ok(log_file_path) => {
                                     log::info!("Saved command log to: {log_file_path}");

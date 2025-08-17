@@ -108,8 +108,8 @@ impl Session {
         // Set environment variables that the shell integration would use
         cmd.env("RENLOG_PID", self.pid.to_string());
 
-        // Set up the current log file marker path for shell integration
-        let current_log_marker = format!("{}/.renlog_current_log", &self.renlog_dir);
+        // Set up the current log file marker path for shell integration (PID-specific to avoid conflicts)
+        let current_log_marker = format!("{}/.renlog_current_log_{}", &self.renlog_dir, self.pid);
         cmd.env("RENLOG_LOG_FILE", &current_log_marker);
 
         log::debug!(
@@ -211,6 +211,7 @@ impl Session {
 
         // Clone necessary data for the output thread
         let renlog_dir_for_output = self.renlog_dir.clone();
+        let pid_for_output = self.pid;
 
         // Forward stdin to PTY master
         log::debug!("Starting stdin->master forwarder thread");
@@ -227,7 +228,12 @@ impl Session {
         log::debug!("Starting unified PTY reader thread");
         thread::spawn(move || {
             log::debug!("Unified PTY reader thread started");
-            if let Err(e) = unified_pty_reader(master_for_output, stdout, &renlog_dir_for_output) {
+            if let Err(e) = unified_pty_reader(
+                master_for_output,
+                stdout,
+                &renlog_dir_for_output,
+                pid_for_output,
+            ) {
                 log::error!("Error in unified PTY reader: {e}");
                 eprintln!("Error in unified PTY reader: {e}");
             }
@@ -280,6 +286,14 @@ impl Session {
 impl Drop for Session {
     fn drop(&mut self) {
         log::debug!("Session Drop trait called - starting cleanup");
+
+        // Clean up PID-specific current log tracking file
+        let current_log_marker = format!("{}/.renlog_current_log_{}", &self.renlog_dir, self.pid);
+        if let Err(e) = std::fs::remove_file(&current_log_marker) {
+            log::debug!("Could not remove current log marker file: {e}");
+        } else {
+            log::debug!("Removed current log marker file: {current_log_marker}");
+        }
 
         // Restore original terminal settings
         if let Some(termios) = &self.original_termios {

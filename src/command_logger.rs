@@ -85,14 +85,17 @@ fn create_latest_symlink(log_dir: &str, filename: &str) -> Result<()> {
     Ok(())
 }
 
-/// Update the current log file tracking file
-fn update_current_log_file(log_dir: &str, log_file_path: &str) -> Result<()> {
-    let current_log_marker = Path::new(log_dir).join(".renlog_current_log");
+/// Update the current log file tracking file (PID-specific to avoid conflicts)
+fn update_current_log_file(log_dir: &str, log_file_path: &str, pid: u32) -> Result<()> {
+    let current_log_marker = Path::new(log_dir).join(format!(".renlog_current_log_{}", pid));
     std::fs::write(&current_log_marker, log_file_path).map_err(|e| {
         log::warn!("Failed to update current log file marker: {e}");
         e
     })?;
-    log::debug!("Updated current log file marker: {log_file_path}");
+    log::debug!(
+        "Updated current log file marker for PID {}: {log_file_path}",
+        pid
+    );
     Ok(())
 }
 
@@ -101,6 +104,7 @@ pub fn save_command_log(
     command: &str,
     data: &[u8],
     exit_status: Option<i32>,
+    pid: u32,
 ) -> Result<String> {
     log::debug!(
         "Saving command log for '{command}', data size: {} bytes, exit status: {exit_status:?}",
@@ -172,7 +176,7 @@ pub fn save_command_log(
     let log_file_path = filepath.to_string_lossy().to_string();
 
     // Update the current log file tracking
-    if let Err(e) = update_current_log_file(log_dir, &log_file_path) {
+    if let Err(e) = update_current_log_file(log_dir, &log_file_path, pid) {
         log::warn!("Failed to update current log file tracking: {e}");
     }
 
