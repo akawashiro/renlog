@@ -14,9 +14,9 @@ ${renlog_path} show-zsh-rc > "${renlog_zsh_rc}"
 
 tmux new -s ${session_name} -d
 tmux send-keys -t ${session_name} "${renlog_path} log --renlog-dir ${renlog_dir} --cmd 'zsh --no-globalrcs --no-rcs'" C-m
-sleep 3
+sleep 1
 tmux send-keys -t ${session_name} "source ${my_zshrc_path}" C-m
-sleep 3
+sleep 1
 tmux send-keys -t ${session_name} "source ${renlog_zsh_rc}" C-m
 
 echo "renlog dir: ${renlog_dir}"
