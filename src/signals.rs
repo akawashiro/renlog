@@ -81,28 +81,22 @@ impl SignalHandler {
                         let result = unsafe { libc::kill(-child_pid, libc::SIGWINCH) };
                         if result != 0 {
                             log::warn!(
-                                "Failed to forward SIGWINCH to process group {}: errno {}",
-                                child_pid,
-                                result
+                                "Failed to forward SIGWINCH to process group {child_pid}: errno {result}"
                             );
                             // Fallback: try to send to individual process
                             let fallback_result = unsafe { libc::kill(child_pid, libc::SIGWINCH) };
                             if fallback_result != 0 {
                                 log::error!(
-                                    "Fallback SIGWINCH to individual process {} also failed: errno {}",
-                                    child_pid,
-                                    fallback_result
+                                    "Fallback SIGWINCH to individual process {child_pid} also failed: errno {fallback_result}"
                                 );
                             } else {
                                 log::info!(
-                                    "SIGWINCH fallback to individual process {} succeeded",
-                                    child_pid
+                                    "SIGWINCH fallback to individual process {child_pid} succeeded"
                                 );
                             }
                         } else {
                             log::info!(
-                                "SIGWINCH forwarded to process group {} successfully",
-                                child_pid
+                                "SIGWINCH forwarded to process group {child_pid} successfully"
                             );
                         }
                     } else {
@@ -234,30 +228,18 @@ impl SignalHandler {
             // Send signal to process group (negative PID) to reach all child processes
             let result = unsafe { libc::kill(-child_pid, libc::SIGINT) };
             if result != 0 {
-                log::warn!(
-                    "Failed to forward SIGINT to process group {}: errno {}",
-                    child_pid,
-                    result
-                );
+                log::warn!("Failed to forward SIGINT to process group {child_pid}: errno {result}");
                 // Fallback: try to send to individual process
                 let fallback_result = unsafe { libc::kill(child_pid, libc::SIGINT) };
                 if fallback_result != 0 {
                     log::error!(
-                        "Fallback SIGINT to individual process {} also failed: errno {}",
-                        child_pid,
-                        fallback_result
+                        "Fallback SIGINT to individual process {child_pid} also failed: errno {fallback_result}"
                     );
                 } else {
-                    log::info!(
-                        "SIGINT fallback to individual process {} succeeded",
-                        child_pid
-                    );
+                    log::info!("SIGINT fallback to individual process {child_pid} succeeded");
                 }
             } else {
-                log::info!(
-                    "SIGINT forwarded to process group {} successfully",
-                    child_pid
-                );
+                log::info!("SIGINT forwarded to process group {child_pid} successfully");
             }
         } else {
             log::info!("No child process to forward SIGINT to - ignoring signal");
@@ -279,29 +261,19 @@ impl SignalHandler {
             let result = unsafe { libc::kill(-child_pid, libc::SIGQUIT) };
             if result != 0 {
                 log::warn!(
-                    "Failed to forward SIGQUIT to process group {}: errno {}",
-                    child_pid,
-                    result
+                    "Failed to forward SIGQUIT to process group {child_pid}: errno {result}"
                 );
                 // Fallback: try to send to individual process
                 let fallback_result = unsafe { libc::kill(child_pid, libc::SIGQUIT) };
                 if fallback_result != 0 {
                     log::error!(
-                        "Fallback SIGQUIT to individual process {} also failed: errno {}",
-                        child_pid,
-                        fallback_result
+                        "Fallback SIGQUIT to individual process {child_pid} also failed: errno {fallback_result}"
                     );
                 } else {
-                    log::info!(
-                        "SIGQUIT fallback to individual process {} succeeded",
-                        child_pid
-                    );
+                    log::info!("SIGQUIT fallback to individual process {child_pid} succeeded");
                 }
             } else {
-                log::info!(
-                    "SIGQUIT forwarded to process group {} successfully",
-                    child_pid
-                );
+                log::info!("SIGQUIT forwarded to process group {child_pid} successfully");
             }
         } else {
             log::info!("No child process to forward SIGQUIT to - ignoring signal");
@@ -323,29 +295,19 @@ impl SignalHandler {
             let result = unsafe { libc::kill(-child_pid, libc::SIGTSTP) };
             if result != 0 {
                 log::warn!(
-                    "Failed to forward SIGTSTP to process group {}: errno {}",
-                    child_pid,
-                    result
+                    "Failed to forward SIGTSTP to process group {child_pid}: errno {result}"
                 );
                 // Fallback: try to send to individual process
                 let fallback_result = unsafe { libc::kill(child_pid, libc::SIGTSTP) };
                 if fallback_result != 0 {
                     log::error!(
-                        "Fallback SIGTSTP to individual process {} also failed: errno {}",
-                        child_pid,
-                        fallback_result
+                        "Fallback SIGTSTP to individual process {child_pid} also failed: errno {fallback_result}"
                     );
                 } else {
-                    log::info!(
-                        "SIGTSTP fallback to individual process {} succeeded",
-                        child_pid
-                    );
+                    log::info!("SIGTSTP fallback to individual process {child_pid} succeeded");
                 }
             } else {
-                log::info!(
-                    "SIGTSTP forwarded to process group {} successfully",
-                    child_pid
-                );
+                log::info!("SIGTSTP forwarded to process group {child_pid} successfully");
             }
         } else {
             log::info!("No child process to forward SIGTSTP to - ignoring signal");

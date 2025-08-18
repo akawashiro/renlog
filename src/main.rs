@@ -155,7 +155,7 @@ fn run_renlog_session(renlog_dir: &str, custom_cmd: Option<&str>) -> Result<i32>
     // The signal handler thread will exit when it detects the fd is None
     // Wait for it to finish
     if let Err(e) = signal_thread.join() {
-        log::warn!("Signal handler thread panicked: {:?}", e);
+        log::warn!("Signal handler thread panicked: {e:?}");
     }
 
     Ok(exit_code)
