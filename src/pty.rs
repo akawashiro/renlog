@@ -74,6 +74,33 @@ impl PtyPair {
     pub fn slave_fd(&self) -> RawFd {
         self.slave_fd.as_raw_fd()
     }
+
+    pub fn validate_readiness(&self) -> Result<()> {
+        use nix::fcntl::{fcntl, FcntlArg};
+
+        // Check master FD
+        let master_fd = self.master_fd();
+        match fcntl(master_fd, FcntlArg::F_GETFD) {
+            Ok(_) => log::debug!("PTY master FD {master_fd} is valid"),
+            Err(e) => {
+                log::error!("PTY master FD {master_fd} is invalid: {e}");
+                return Err(io::Error::other(format!("PTY master FD invalid: {e}")));
+            }
+        }
+
+        // Check slave FD
+        let slave_fd = self.slave_fd();
+        match fcntl(slave_fd, FcntlArg::F_GETFD) {
+            Ok(_) => log::debug!("PTY slave FD {slave_fd} is valid"),
+            Err(e) => {
+                log::error!("PTY slave FD {slave_fd} is invalid: {e}");
+                return Err(io::Error::other(format!("PTY slave FD invalid: {e}")));
+            }
+        }
+
+        log::info!("PTY pair validated successfully");
+        Ok(())
+    }
 }
 
 pub fn set_cbreak_mode(fd: RawFd) -> Result<Termios> {

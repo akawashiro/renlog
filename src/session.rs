@@ -26,6 +26,48 @@ pub struct Session {
     command_name: Arc<Mutex<String>>,
 }
 
+fn validate_fd(fd: RawFd, name: &str) -> Result<()> {
+    use nix::fcntl::{fcntl, FcntlArg};
+
+    match fcntl(fd, FcntlArg::F_GETFD) {
+        Ok(_) => {
+            log::debug!("File descriptor {fd} ({name}) is valid");
+            Ok(())
+        }
+        Err(e) => {
+            log::error!("File descriptor {fd} ({name}) is invalid: {e}");
+            Err(io::Error::other(format!(
+                "Invalid file descriptor {fd} ({name}): {e}"
+            )))
+        }
+    }
+}
+
+fn ensure_fd_ready(fd: RawFd, name: &str) -> Result<()> {
+    validate_fd(fd, name)?;
+
+    use nix::poll::{poll, PollFd, PollFlags, PollTimeout};
+    use std::os::unix::io::BorrowedFd;
+
+    let borrowed_fd = unsafe { BorrowedFd::borrow_raw(fd) };
+    let mut poll_fds = [PollFd::new(
+        borrowed_fd,
+        PollFlags::POLLIN | PollFlags::POLLOUT,
+    )];
+
+    // Use zero timeout for non-blocking poll
+    match poll(&mut poll_fds, PollTimeout::ZERO) {
+        Ok(_) => {
+            log::debug!("File descriptor {fd} ({name}) is ready");
+            Ok(())
+        }
+        Err(e) => {
+            log::warn!("File descriptor {fd} ({name}) readiness check failed: {e}");
+            Ok(())
+        }
+    }
+}
+
 impl Session {
     pub fn new(renlog_dir: &str, custom_cmd: Option<&str>) -> Result<Self> {
         log::debug!("Creating new Session instance");
@@ -83,6 +125,10 @@ impl Session {
     pub fn start_child(&mut self) -> Result<()> {
         log::debug!("Starting child process");
 
+        // Validate PTY readiness before proceeding
+        self.pty.validate_readiness()?;
+        log::debug!("PTY validated and ready for child process");
+
         let (mut cmd, command_name) = if let Some(custom_cmd) = &self.custom_cmd {
             // Parse the custom command
             let parts: Vec<&str> = custom_cmd.split_whitespace().collect();
@@ -128,18 +174,34 @@ impl Session {
 
         // Set up stdio to use the PTY slave (duplicate fd for each stdio stream)
         let slave_fd = self.pty.slave_fd();
+
+        // Validate the slave FD before duplicating
+        validate_fd(slave_fd, "PTY slave")?;
+        ensure_fd_ready(slave_fd, "PTY slave")?;
+
         let stdin_fd = unistd::dup(slave_fd).map_err(|e| {
             log::error!("Failed to dup slave fd for stdin: {e}");
             io::Error::other(format!("Failed to dup slave fd for stdin: {e}"))
         })?;
+
+        // Validate duplicated stdin FD
+        validate_fd(stdin_fd, "duplicated stdin")?;
+
         let stdout_fd = unistd::dup(slave_fd).map_err(|e| {
             log::error!("Failed to dup slave fd for stdout: {e}");
             io::Error::other(format!("Failed to dup slave fd for stdout: {e}"))
         })?;
+
+        // Validate duplicated stdout FD
+        validate_fd(stdout_fd, "duplicated stdout")?;
+
         let stderr_fd = unistd::dup(slave_fd).map_err(|e| {
             log::error!("Failed to dup slave fd for stderr: {e}");
             io::Error::other(format!("Failed to dup slave fd for stderr: {e}"))
         })?;
+
+        // Validate duplicated stderr FD
+        validate_fd(stderr_fd, "duplicated stderr")?;
 
         cmd.stdin(unsafe { Stdio::from_raw_fd(stdin_fd) });
         cmd.stdout(unsafe { Stdio::from_raw_fd(stdout_fd) });
@@ -147,16 +209,37 @@ impl Session {
 
         // Set up process group handling for proper signal delivery
         unsafe {
-            cmd.pre_exec(|| {
+            cmd.pre_exec(move || {
+                // Validate that standard I/O file descriptors are available
+                use nix::fcntl::{fcntl, FcntlArg};
+
+                // Check stdin (fd 0)
+                if fcntl(0, FcntlArg::F_GETFD).is_err() {
+                    eprintln!("ERROR: stdin (fd 0) is not available in child process");
+                    return Err(io::Error::other("stdin not available"));
+                }
+
+                // Check stdout (fd 1)
+                if fcntl(1, FcntlArg::F_GETFD).is_err() {
+                    eprintln!("ERROR: stdout (fd 1) is not available in child process");
+                    return Err(io::Error::other("stdout not available"));
+                }
+
+                // Check stderr (fd 2)
+                if fcntl(2, FcntlArg::F_GETFD).is_err() {
+                    eprintln!("ERROR: stderr (fd 2) is not available in child process");
+                    return Err(io::Error::other("stderr not available"));
+                }
+
                 // Create a new process group for the child process
                 // This ensures proper signal handling and terminal control
                 let result = libc::setsid();
                 if result == -1 {
-                    eprintln!(
-                        "WARNING: Failed to create new session for child: errno {}",
-                        std::io::Error::last_os_error()
-                    );
+                    let err = std::io::Error::last_os_error();
+                    eprintln!("ERROR: Failed to create new session for child: {err}");
+                    return Err(err);
                 }
+
                 Ok(())
             });
         }
@@ -191,25 +274,44 @@ impl Session {
             "File descriptors - stdin: {stdin_fd}, stdout: {stdout_fd}, master: {master_fd}"
         );
 
+        // Validate file descriptors before duplicating
+        validate_fd(stdin_fd, "stdin")?;
+        validate_fd(stdout_fd, "stdout")?;
+        validate_fd(master_fd, "PTY master")?;
+
         // Create separate owned file descriptors by duplicating them
         let stdin_dup = unistd::dup(stdin_fd).map_err(|e| {
             log::error!("Failed to dup stdin: {e}");
             io::Error::other(format!("Failed to dup stdin: {e}"))
         })?;
+
+        // Validate duplicated stdin
+        validate_fd(stdin_dup, "duplicated stdin for forwarder")?;
+
         let stdout_dup = unistd::dup(stdout_fd).map_err(|e| {
             log::error!("Failed to dup stdout: {e}");
             io::Error::other(format!("Failed to dup stdout: {e}"))
         })?;
+
+        // Validate duplicated stdout
+        validate_fd(stdout_dup, "duplicated stdout for forwarder")?;
         let master_dup1 = unistd::dup(master_fd).map_err(|e| {
             log::error!("Failed to dup master1: {e}");
             io::Error::other(format!("Failed to dup master1: {e}"))
         })?;
+
+        // Validate duplicated master for stdin forwarding
+        validate_fd(master_dup1, "duplicated master for stdin forwarding")?;
+
         let master_dup2 = unistd::dup(master_fd).map_err(|e| {
             log::error!("Failed to dup master2: {e}");
             io::Error::other(format!("Failed to dup master2: {e}"))
         })?;
 
-        log::debug!("All file descriptors duplicated successfully");
+        // Validate duplicated master for output forwarding
+        validate_fd(master_dup2, "duplicated master for output forwarding")?;
+
+        log::debug!("All file descriptors duplicated and validated successfully");
 
         // Create File instances from the duplicated descriptors
         let stdin = unsafe { File::from_raw_fd(stdin_dup) };
