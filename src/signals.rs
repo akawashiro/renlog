@@ -1,5 +1,7 @@
 use signal_hook::consts::signal::{SIGCHLD, SIGHUP, SIGINT, SIGQUIT, SIGTSTP, SIGUSR2, SIGWINCH};
 use signal_hook::iterator::Signals;
+use std::collections::HashSet;
+use std::fs;
 use std::io::Result;
 use std::os::unix::io::RawFd;
 use std::process::Child;
@@ -24,6 +26,214 @@ impl SignalHandler {
         log::debug!("Initializing signal handler for all signals");
         log::info!("Signal handler initialized for SIGCHLD, SIGWINCH, SIGHUP, SIGUSR2, SIGINT, SIGQUIT, SIGTSTP");
         Ok(SignalHandler {})
+    }
+
+    fn get_session_id(&self, pid: i32) -> Option<i32> {
+        let stat_path = format!("/proc/{pid}/stat");
+
+        match fs::read_to_string(&stat_path) {
+            Ok(contents) => {
+                // The session ID is the 6th field in /proc/pid/stat
+                let fields: Vec<&str> = contents.split_whitespace().collect();
+                if fields.len() >= 6 {
+                    fields[5].parse().ok()
+                } else {
+                    None
+                }
+            }
+            Err(_) => None,
+        }
+    }
+
+    fn get_process_group_id(&self, pid: i32) -> Option<i32> {
+        let stat_path = format!("/proc/{pid}/stat");
+
+        match fs::read_to_string(&stat_path) {
+            Ok(contents) => {
+                // The process group ID is the 5th field in /proc/pid/stat
+                let fields: Vec<&str> = contents.split_whitespace().collect();
+                if fields.len() >= 5 {
+                    fields[4].parse().ok()
+                } else {
+                    None
+                }
+            }
+            Err(_) => None,
+        }
+    }
+
+    fn get_session_processes(&self, target_pid: i32) -> Vec<i32> {
+        // First get the session ID of the target process
+        let target_session_id = match self.get_session_id(target_pid) {
+            Some(sid) => sid,
+            None => {
+                log::warn!("Could not get session ID for PID {target_pid}");
+                return vec![target_pid]; // Fallback to just the target process
+            }
+        };
+
+        log::debug!("Target process {target_pid} has session ID: {target_session_id}");
+
+        // Read /proc directory to find all processes
+        let proc_entries = match fs::read_dir("/proc") {
+            Ok(entries) => entries,
+            Err(e) => {
+                log::error!("Could not read /proc directory: {e}");
+                return vec![target_pid]; // Fallback to just the target process
+            }
+        };
+
+        let mut session_processes = Vec::new();
+
+        for entry in proc_entries.flatten() {
+            let entry_name = entry.file_name();
+            if let Some(name_str) = entry_name.to_str() {
+                // Check if this is a process directory (numeric name)
+                if let Ok(pid) = name_str.parse::<i32>() {
+                    // Get session ID for this process
+                    if let Some(session_id) = self.get_session_id(pid) {
+                        if session_id == target_session_id {
+                            session_processes.push(pid);
+                        }
+                    }
+                }
+            }
+        }
+
+        log::debug!(
+            "Found {} processes in session {target_session_id}: {:?}",
+            session_processes.len(),
+            session_processes
+        );
+
+        if session_processes.is_empty() {
+            log::warn!(
+                "No processes found in session {target_session_id}, falling back to target process"
+            );
+            vec![target_pid]
+        } else {
+            session_processes
+        }
+    }
+
+    fn get_process_group_processes(&self, target_pid: i32) -> Vec<i32> {
+        // First get the process group ID of the target process
+        let target_pgid = match self.get_process_group_id(target_pid) {
+            Some(pgid) => pgid,
+            None => {
+                log::warn!("Could not get process group ID for PID {target_pid}");
+                return vec![target_pid]; // Fallback to just the target process
+            }
+        };
+
+        log::debug!("Target process {target_pid} has process group ID: {target_pgid}");
+
+        // Read /proc directory to find all processes
+        let proc_entries = match fs::read_dir("/proc") {
+            Ok(entries) => entries,
+            Err(e) => {
+                log::error!("Could not read /proc directory: {e}");
+                return vec![target_pid]; // Fallback to just the target process
+            }
+        };
+
+        let mut group_processes = Vec::new();
+
+        for entry in proc_entries.flatten() {
+            let entry_name = entry.file_name();
+            if let Some(name_str) = entry_name.to_str() {
+                // Check if this is a process directory (numeric name)
+                if let Ok(pid) = name_str.parse::<i32>() {
+                    // Get process group ID for this process
+                    if let Some(pgid) = self.get_process_group_id(pid) {
+                        if pgid == target_pgid {
+                            group_processes.push(pid);
+                        }
+                    }
+                }
+            }
+        }
+
+        log::debug!(
+            "Found {} processes in process group {target_pgid}: {:?}",
+            group_processes.len(),
+            group_processes
+        );
+
+        if group_processes.is_empty() {
+            log::warn!(
+                "No processes found in process group {target_pgid}, falling back to target process"
+            );
+            vec![target_pid]
+        } else {
+            group_processes
+        }
+    }
+
+    fn send_signal_to_session_and_group(&self, target_pid: i32, signal: i32, signal_name: &str) {
+        log::info!(
+            "Forwarding {signal_name} to session and process group processes of PID: {target_pid}"
+        );
+
+        // Get all processes in the same session
+        let session_processes = self.get_session_processes(target_pid);
+        log::debug!("Session processes: {} found", session_processes.len());
+
+        // Get all processes in the same process group
+        let group_processes = self.get_process_group_processes(target_pid);
+        log::debug!("Process group processes: {} found", group_processes.len());
+
+        // Combine and deduplicate processes
+        let mut all_processes: HashSet<i32> = HashSet::new();
+        all_processes.extend(session_processes.iter());
+        all_processes.extend(group_processes.iter());
+
+        let unique_processes: Vec<i32> = all_processes.into_iter().collect();
+        log::info!(
+            "Total unique processes to send {signal_name} to: {} (session: {}, group: {})",
+            unique_processes.len(),
+            session_processes.len(),
+            group_processes.len()
+        );
+
+        let mut success_count = 0;
+        let mut error_count = 0;
+
+        // Send signal to each unique process individually
+        for process_pid in &unique_processes {
+            let result = unsafe { libc::kill(*process_pid, signal) };
+            if result == 0 {
+                log::debug!("{signal_name} sent to process {process_pid} successfully");
+                success_count += 1;
+            } else {
+                log::warn!("Failed to send {signal_name} to process {process_pid}: errno {result}");
+                error_count += 1;
+            }
+        }
+
+        if success_count > 0 {
+            log::info!(
+                "{signal_name} successfully sent to {success_count}/{} processes",
+                unique_processes.len()
+            );
+        }
+        if error_count > 0 {
+            log::warn!(
+                "{signal_name} failed to send to {error_count}/{} processes",
+                unique_processes.len()
+            );
+
+            // Fallback: try process group signal if individual sends failed
+            log::info!("Attempting fallback to process group signal for PID {target_pid}");
+            let result = unsafe { libc::kill(-target_pid, signal) };
+            if result == 0 {
+                log::info!(
+                    "{signal_name} fallback to process group signal {target_pid} successful"
+                );
+            } else {
+                log::error!("Fallback {signal_name} to process group signal {target_pid} also failed: errno {result}");
+            }
+        }
     }
 
     pub fn start_handler_thread(
@@ -72,34 +282,15 @@ impl SignalHandler {
                 SIGWINCH => {
                     log::info!("Caught SIGWINCH signal - handling terminal resize");
 
-                    // First, forward the signal to the child process group
+                    // First, forward the signal to the child session
                     let child_guard = callbacks.child.lock().unwrap();
                     if let Some(child) = child_guard.as_ref() {
                         let child_pid = child.id() as i32;
-                        log::info!("Forwarding SIGWINCH to child process group PID: {child_pid}");
-
-                        // Send signal to process group (negative PID) to reach all child processes
-                        let result = unsafe { libc::kill(-child_pid, libc::SIGWINCH) };
-                        if result != 0 {
-                            log::warn!(
-                                "Failed to forward SIGWINCH to process group {child_pid}: errno {result}"
-                            );
-                            // Fallback: try to send to individual process
-                            let fallback_result = unsafe { libc::kill(child_pid, libc::SIGWINCH) };
-                            if fallback_result != 0 {
-                                log::error!(
-                                    "Fallback SIGWINCH to individual process {child_pid} also failed: errno {fallback_result}"
-                                );
-                            } else {
-                                log::info!(
-                                    "SIGWINCH fallback to individual process {child_pid} succeeded"
-                                );
-                            }
-                        } else {
-                            log::info!(
-                                "SIGWINCH forwarded to process group {child_pid} successfully"
-                            );
-                        }
+                        self.send_signal_to_session_and_group(
+                            child_pid,
+                            libc::SIGWINCH,
+                            "SIGWINCH",
+                        );
                     } else {
                         log::debug!("No child process to forward SIGWINCH to");
                     }
@@ -222,30 +413,13 @@ impl SignalHandler {
 
     fn handle_sigint(&self, callbacks: &SessionCallbacks) {
         log::info!(
-            "Handling SIGINT signal - forwarding to child process group (renlog will not exit)"
+            "Handling SIGINT signal - forwarding to session and process group (renlog will not exit)"
         );
 
         let child_guard = callbacks.child.lock().unwrap();
         if let Some(child) = child_guard.as_ref() {
             let child_pid = child.id() as i32;
-            log::info!("Forwarding SIGINT to child process group PID: {child_pid}");
-
-            // Send signal to process group (negative PID) to reach all child processes
-            let result = unsafe { libc::kill(-child_pid, libc::SIGINT) };
-            if result != 0 {
-                log::warn!("Failed to forward SIGINT to process group {child_pid}: errno {result}");
-                // Fallback: try to send to individual process
-                let fallback_result = unsafe { libc::kill(child_pid, libc::SIGINT) };
-                if fallback_result != 0 {
-                    log::error!(
-                        "Fallback SIGINT to individual process {child_pid} also failed: errno {fallback_result}"
-                    );
-                } else {
-                    log::info!("SIGINT fallback to individual process {child_pid} succeeded");
-                }
-            } else {
-                log::info!("SIGINT forwarded to process group {child_pid} successfully");
-            }
+            self.send_signal_to_session_and_group(child_pid, libc::SIGINT, "SIGINT");
         } else {
             log::info!("No child process to forward SIGINT to - ignoring signal");
         }
@@ -254,32 +428,13 @@ impl SignalHandler {
 
     fn handle_sigquit(&self, callbacks: &SessionCallbacks) {
         log::info!(
-            "Handling SIGQUIT signal - forwarding to child process group (renlog will not exit)"
+            "Handling SIGQUIT signal - forwarding to session and process group (renlog will not exit)"
         );
 
         let child_guard = callbacks.child.lock().unwrap();
         if let Some(child) = child_guard.as_ref() {
             let child_pid = child.id() as i32;
-            log::info!("Forwarding SIGQUIT to child process group PID: {child_pid}");
-
-            // Send signal to process group (negative PID) to reach all child processes
-            let result = unsafe { libc::kill(-child_pid, libc::SIGQUIT) };
-            if result != 0 {
-                log::warn!(
-                    "Failed to forward SIGQUIT to process group {child_pid}: errno {result}"
-                );
-                // Fallback: try to send to individual process
-                let fallback_result = unsafe { libc::kill(child_pid, libc::SIGQUIT) };
-                if fallback_result != 0 {
-                    log::error!(
-                        "Fallback SIGQUIT to individual process {child_pid} also failed: errno {fallback_result}"
-                    );
-                } else {
-                    log::info!("SIGQUIT fallback to individual process {child_pid} succeeded");
-                }
-            } else {
-                log::info!("SIGQUIT forwarded to process group {child_pid} successfully");
-            }
+            self.send_signal_to_session_and_group(child_pid, libc::SIGQUIT, "SIGQUIT");
         } else {
             log::info!("No child process to forward SIGQUIT to - ignoring signal");
         }
@@ -288,32 +443,13 @@ impl SignalHandler {
 
     fn handle_sigtstp(&self, callbacks: &SessionCallbacks) {
         log::info!(
-            "Handling SIGTSTP signal - forwarding to child process group (renlog will not exit)"
+            "Handling SIGTSTP signal - forwarding to session and process group (renlog will not exit)"
         );
 
         let child_guard = callbacks.child.lock().unwrap();
         if let Some(child) = child_guard.as_ref() {
             let child_pid = child.id() as i32;
-            log::info!("Forwarding SIGTSTP to child process group PID: {child_pid}");
-
-            // Send signal to process group (negative PID) to reach all child processes
-            let result = unsafe { libc::kill(-child_pid, libc::SIGTSTP) };
-            if result != 0 {
-                log::warn!(
-                    "Failed to forward SIGTSTP to process group {child_pid}: errno {result}"
-                );
-                // Fallback: try to send to individual process
-                let fallback_result = unsafe { libc::kill(child_pid, libc::SIGTSTP) };
-                if fallback_result != 0 {
-                    log::error!(
-                        "Fallback SIGTSTP to individual process {child_pid} also failed: errno {fallback_result}"
-                    );
-                } else {
-                    log::info!("SIGTSTP fallback to individual process {child_pid} succeeded");
-                }
-            } else {
-                log::info!("SIGTSTP forwarded to process group {child_pid} successfully");
-            }
+            self.send_signal_to_session_and_group(child_pid, libc::SIGTSTP, "SIGTSTP");
         } else {
             log::info!("No child process to forward SIGTSTP to - ignoring signal");
         }
