@@ -7,7 +7,7 @@ set -eux -o pipefail
 script_path=$(dirname "$(readlink -f "$0")")
 source_path="${script_path}/source_zshrc"
 renlog_path="$script_path/../target/debug/renlog"
-session_name="source-zsh-with-renlog-"$(date +%s%N)
+session_name=$(basename $(readlink -f "$0") .sh)
 renlog_dir=/tmp/${session_name}-dir
 renlog_zsh_rc=${renlog_dir}/zshrc
 mkdir -p "${renlog_dir}"
