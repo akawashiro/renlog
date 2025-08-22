@@ -1,5 +1,4 @@
 mod command_logger;
-mod emergency_shell;
 mod io_forward;
 mod log_processor;
 mod logging;
@@ -11,7 +10,6 @@ mod zsh_config;
 
 use chrono::Utc;
 use clap::{Parser, Subcommand};
-use emergency_shell::EmergencyShell;
 use session::Session;
 use signals::SignalHandler;
 use std::io::Result;
@@ -93,10 +91,7 @@ fn run_log_session(renlog_dir: &str, log_level: &str, custom_cmd: Option<&str>) 
     log::info!("Starting Renlog (Rust implementation of zenlog)...");
     println!("Starting Renlog (Rust implementation of zenlog)...");
 
-    // Create emergency shell for fallback
-    let emergency_shell = EmergencyShell::new();
-
-    // Try to start renlog session with emergency fallback
+    // Try to start renlog session
     let result = run_renlog_session(renlog_dir, custom_cmd);
 
     match result {
@@ -108,21 +103,7 @@ fn run_log_session(renlog_dir: &str, log_level: &str, custom_cmd: Option<&str>) 
         Err(e) => {
             log::error!("Renlog session failed: {e}");
             eprintln!("Renlog failed to start: {e}");
-
-            // Fall back to emergency shell
-            match emergency_shell.start_with_error(&format!("Renlog initialization failed: {e}")) {
-                Ok(status) => {
-                    let exit_code = status.code().unwrap_or(1);
-                    log::info!("Emergency shell exited with code: {exit_code}");
-                    std::process::exit(exit_code);
-                }
-                Err(emergency_err) => {
-                    log::error!("Emergency shell also failed: {emergency_err}");
-                    eprintln!("CRITICAL: Both renlog and emergency shell failed!");
-                    eprintln!("Emergency shell error: {emergency_err}");
-                    std::process::exit(1);
-                }
-            }
+            std::process::exit(1);
         }
     }
 }
