@@ -106,9 +106,7 @@ Add the following to your `~/.zshrc` to automatically start renlog when opening 
 
 if which renlog > /dev/null 2>&1 && [[ "${TMUX}" ]]; then
     if [[ -z "${RENLOG_PID}" ]]; then
-        # Create a temporary directory for logs
         renlog_dir=$(mktemp -d /tmp/renlog.XXXXXX)
-        # Start renlog with zsh
         exec renlog --log-level info log --renlog-dir ${renlog_dir} --cmd 'zsh -l'
     else
         # We're already inside renlog, just load the shell integration
@@ -128,9 +126,7 @@ Add the following to your `~/.bashrc` to automatically start renlog when opening
 
 if which renlog > /dev/null 2>&1 && [[ "${TMUX}" ]]; then
     if [[ -z "${RENLOG_PID}" ]]; then
-        # Create a temporary directory for logs
         renlog_dir=$(mktemp -d /tmp/renlog.XXXXXX)
-        # Start renlog with bash
         exec renlog --log-level info log --renlog-dir ${renlog_dir} --cmd 'bash -l'
     else
         # We're already inside renlog, just load the shell integration
