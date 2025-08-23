@@ -104,8 +104,7 @@ Add the following to your `~/.zshrc` to automatically start renlog when opening 
 ```zsh
 ########## renlog start #########
 
-if which renlog > /dev/null 2>&1; then
-    # Check if we're not already inside a renlog session
+if which renlog > /dev/null 2>&1 && [[ "${TMUX}" ]]; then
     if [[ -z "${RENLOG_PID}" ]]; then
         # Create a temporary directory for logs
         renlog_dir=$(mktemp -d /tmp/renlog.XXXXXX)
@@ -127,8 +126,7 @@ Add the following to your `~/.bashrc` to automatically start renlog when opening
 ```bash
 ########## renlog start #########
 
-if which renlog > /dev/null 2>&1; then
-    # Check if we're not already inside a renlog session
+if which renlog > /dev/null 2>&1 && [[ "${TMUX}" ]]; then
     if [[ -z "${RENLOG_PID}" ]]; then
         # Create a temporary directory for logs
         renlog_dir=$(mktemp -d /tmp/renlog.XXXXXX)
@@ -142,19 +140,3 @@ fi
 
 ########## renlog end #########
 ```
-
-### Verifying the Setup
-
-After configuring your shell, you can verify that renlog is working:
-
-1. Open a new terminal
-2. Check if renlog is running: `echo $RENLOG_PID` (should show a process ID)
-3. Run some commands
-4. Check the log directory for command logs: `ls -la /tmp/renlog.*`
-
-### Log Files
-
-Renlog creates individual log files for each command in the specified directory:
-- Main renlog log: `renlog_TIMESTAMP.log`
-- Command logs: `TIMESTAMP_COMMAND.log`
-- Latest log symlink: `renlog-latest.log`
