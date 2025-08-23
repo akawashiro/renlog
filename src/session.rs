@@ -209,9 +209,24 @@ impl Session {
 
         // Set up process group handling for proper signal delivery
         unsafe {
+            let slave_fd_to_close = slave_fd;
             cmd.pre_exec(move || {
                 // Validate that standard I/O file descriptors are available
-                use nix::fcntl::{fcntl, FcntlArg};
+                use nix::fcntl::{fcntl, FcntlArg, FdFlag};
+
+                // IMPORTANT: Close the original slave FD in the child process
+                // This prevents FD leakage to tmux or other processes
+                if libc::close(slave_fd_to_close) == -1 {
+                    let err = std::io::Error::last_os_error();
+                    eprintln!("WARNING: Failed to close slave FD in child: {err}");
+                }
+
+                // Set close-on-exec flag for all FDs except stdin/stdout/stderr
+                // This prevents FD leakage when the shell spawns other processes
+                for fd in 3..256 {
+                    // Set FD_CLOEXEC flag
+                    let _ = fcntl(fd, FcntlArg::F_SETFD(FdFlag::FD_CLOEXEC));
+                }
 
                 // Check stdin (fd 0)
                 if fcntl(0, FcntlArg::F_GETFD).is_err() {
@@ -238,6 +253,13 @@ impl Session {
                     let err = std::io::Error::last_os_error();
                     eprintln!("ERROR: Failed to create new session for child: {err}");
                     return Err(err);
+                }
+
+                // Set controlling terminal for the new session
+                // This is important for proper terminal job control
+                if libc::ioctl(0, libc::TIOCSCTTY, 0) == -1 {
+                    let err = std::io::Error::last_os_error();
+                    eprintln!("WARNING: Failed to set controlling terminal: {err}");
                 }
 
                 Ok(())
