@@ -82,3 +82,79 @@ graph TB
 4. **Signal Forwarding**: When users press Ctrl+C or send termination signals, the signal handler forwards SIGINT/SIGTERM to the child process, enabling proper termination of interactive applications like `top`, `htop`, `vim`, etc.
 
 5. **Command Logging**: The output reader detects START_COMMAND and END_COMMAND markers in the stream, buffering and saving each command's output to individual log files.
+
+## Installation and Setup
+
+### Prerequisites
+
+First, build and install renlog:
+
+```bash
+cargo build --release
+# Add the binary to your PATH or copy it to a directory in PATH
+cp target/release/renlog ~/.local/bin/  # or /usr/local/bin/
+```
+
+### Shell Configuration
+
+#### Zsh Configuration
+
+Add the following to your `~/.zshrc` to automatically start renlog when opening a new shell:
+
+```zsh
+########## renlog start #########
+
+if which renlog > /dev/null 2>&1; then
+    # Check if we're not already inside a renlog session
+    if [[ -z "${RENLOG_PID}" ]]; then
+        # Create a temporary directory for logs
+        renlog_dir=$(mktemp -d /tmp/renlog.XXXXXX)
+        # Start renlog with zsh
+        exec renlog --log-level info log --renlog-dir ${renlog_dir} --cmd 'zsh -l'
+    else
+        # We're already inside renlog, just load the shell integration
+        eval "$(renlog show-zsh-rc)"
+    fi
+fi
+
+########## renlog end #########
+```
+
+#### Bash Configuration
+
+Add the following to your `~/.bashrc` to automatically start renlog when opening a new shell:
+
+```bash
+########## renlog start #########
+
+if which renlog > /dev/null 2>&1; then
+    # Check if we're not already inside a renlog session
+    if [[ -z "${RENLOG_PID}" ]]; then
+        # Create a temporary directory for logs
+        renlog_dir=$(mktemp -d /tmp/renlog.XXXXXX)
+        # Start renlog with bash
+        exec renlog --log-level info log --renlog-dir ${renlog_dir} --cmd 'bash -l'
+    else
+        # We're already inside renlog, just load the shell integration
+        eval "$(renlog show-bash-rc)"
+    fi
+fi
+
+########## renlog end #########
+```
+
+### Verifying the Setup
+
+After configuring your shell, you can verify that renlog is working:
+
+1. Open a new terminal
+2. Check if renlog is running: `echo $RENLOG_PID` (should show a process ID)
+3. Run some commands
+4. Check the log directory for command logs: `ls -la /tmp/renlog.*`
+
+### Log Files
+
+Renlog creates individual log files for each command in the specified directory:
+- Main renlog log: `renlog_TIMESTAMP.log`
+- Command logs: `TIMESTAMP_COMMAND.log`
+- Latest log symlink: `renlog-latest.log`
