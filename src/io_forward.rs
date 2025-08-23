@@ -1,5 +1,5 @@
 use crate::command_logger;
-use crate::zsh_config::{END_COMMAND_NAME, START_COMMAND_NAME};
+use crate::shell_config::{END_COMMAND_NAME, START_COMMAND_NAME};
 use std::fs::File;
 use std::io::{self, Read, Result, Write};
 

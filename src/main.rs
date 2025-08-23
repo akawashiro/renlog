@@ -1,24 +1,22 @@
-mod bash_config;
 mod command_logger;
 mod io_forward;
 mod log_processor;
 mod logging;
 mod pty;
 mod session;
+mod shell_config;
 mod signals;
 mod symlink_utils;
-mod zsh_config;
 
-use bash_config::show_bash_rc;
 use chrono::Utc;
 use clap::{Parser, Subcommand};
 use session::Session;
+use shell_config::{show_shell_rc, ShellType};
 use signals::SignalHandler;
 use std::io::Result;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use symlink_utils::create_or_update_symlink;
-use zsh_config::show_zsh_rc;
 
 #[derive(Parser)]
 #[command(name = "renlog")]
@@ -61,11 +59,11 @@ fn main() -> Result<()> {
 
     match args.command {
         Commands::ShowBashRc => {
-            show_bash_rc();
+            show_shell_rc(ShellType::Bash);
             Ok(())
         }
         Commands::ShowZshRc => {
-            show_zsh_rc();
+            show_shell_rc(ShellType::Zsh);
             Ok(())
         }
         Commands::Log { renlog_dir, cmd } => {
