@@ -1,5 +1,5 @@
 use crate::command_logger;
-use crate::io_forward::{simple_forward, unified_pty_reader};
+use crate::io_forward::{forward_pty_to_stdout_with_logging, forward_stdin_to_pty};
 use crate::pty::{restore_termios, set_cbreak_mode, PtyPair};
 
 use nix::sys::termios::Termios;
@@ -349,27 +349,27 @@ impl Session {
         log::debug!("Starting stdin->master forwarder thread");
         thread::spawn(move || {
             log::debug!("Stdin forwarder thread started");
-            if let Err(e) = simple_forward(stdin, stdin_master) {
+            if let Err(e) = forward_stdin_to_pty(stdin, stdin_master) {
                 log::error!("Error in stdin forwarding: {e}");
                 eprintln!("Error in stdin forwarding: {e}");
             }
             log::debug!("Stdin forwarder thread ending");
         });
 
-        // Use unified PTY reader for output forwarding and command detection/logging
-        log::debug!("Starting unified PTY reader thread");
+        // Forward PTY output to stdout with command detection and logging
+        log::debug!("Starting PTY to stdout forwarder thread");
         thread::spawn(move || {
-            log::debug!("Unified PTY reader thread started");
-            if let Err(e) = unified_pty_reader(
+            log::debug!("PTY to stdout forwarder thread started");
+            if let Err(e) = forward_pty_to_stdout_with_logging(
                 master_for_output,
                 stdout,
                 &renlog_dir_for_output,
                 pid_for_output,
             ) {
-                log::error!("Error in unified PTY reader: {e}");
+                log::error!("Error in PTY to stdout forwarder: {e}");
                 eprintln!("Error in unified PTY reader: {e}");
             }
-            log::debug!("Unified PTY reader thread ending");
+            log::debug!("PTY to stdout forwarder thread ending");
         });
 
         log::info!("I/O forwarders started successfully");

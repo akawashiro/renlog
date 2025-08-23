@@ -5,9 +5,9 @@ use std::io::{self, Read, Result, Write};
 
 const BUFFER_SIZE: usize = 32 * 1024;
 
-// Simple input forwarding without command detection (used for stdin)
-pub fn simple_forward(mut input: File, mut output: File) -> Result<()> {
-    log::debug!("Starting simple input forwarding");
+// Forward input from stdin to PTY master without command detection
+pub fn forward_stdin_to_pty(mut input: File, mut output: File) -> Result<()> {
+    log::debug!("Starting stdin to PTY forwarding");
     let mut buffer = [0u8; BUFFER_SIZE];
     let mut total_bytes_forwarded = 0u64;
 
@@ -15,12 +15,12 @@ pub fn simple_forward(mut input: File, mut output: File) -> Result<()> {
         match input.read(&mut buffer) {
             Ok(0) => {
                 log::debug!(
-                    "simple_forward: EOF reached, total bytes forwarded: {total_bytes_forwarded}"
+                    "forward_stdin_to_pty: EOF reached, total bytes forwarded: {total_bytes_forwarded}"
                 );
                 break; // EOF
             }
             Ok(n) => {
-                log::trace!("simple_forward: read {n} bytes");
+                log::trace!("forward_stdin_to_pty: read {n} bytes");
                 let data = &buffer[..n];
 
                 // Write data to output immediately
@@ -30,34 +30,36 @@ pub fn simple_forward(mut input: File, mut output: File) -> Result<()> {
                 total_bytes_forwarded += n as u64;
                 if total_bytes_forwarded % (1024 * 1024) == 0 {
                     log::debug!(
-                        "simple_forward: forwarded {} MB",
+                        "forward_stdin_to_pty: forwarded {} MB",
                         total_bytes_forwarded / (1024 * 1024)
                     );
                 }
             }
             Err(e) => {
                 if e.kind() == io::ErrorKind::Interrupted {
-                    log::trace!("simple_forward: interrupted, continuing");
+                    log::trace!("forward_stdin_to_pty: interrupted, continuing");
                     continue;
                 }
-                log::error!("simple_forward: I/O error after {total_bytes_forwarded} bytes: {e}");
+                log::error!(
+                    "forward_stdin_to_pty: I/O error after {total_bytes_forwarded} bytes: {e}"
+                );
                 return Err(e);
             }
         }
     }
 
-    log::info!("simple_forward completed: {total_bytes_forwarded} bytes forwarded");
+    log::info!("forward_stdin_to_pty completed: {total_bytes_forwarded} bytes forwarded");
     Ok(())
 }
 
-// Unified PTY reader that handles both output forwarding and command detection/logging
-pub fn unified_pty_reader(
+// Forward output from PTY master to stdout with command detection and logging
+pub fn forward_pty_to_stdout_with_logging(
     mut input: File,
     mut stdout: File,
     log_dir: &str,
     pid: u32,
 ) -> Result<()> {
-    log::debug!("Starting unified PTY reader with command detection and buffering");
+    log::debug!("Starting PTY to stdout forwarding with command detection and logging");
     let mut buffer = [0u8; BUFFER_SIZE];
     let mut total_bytes_read = 0u64;
     let mut stdout_errors = 0u32;
@@ -72,7 +74,7 @@ pub fn unified_pty_reader(
         match input.read(&mut buffer) {
             Ok(0) => {
                 log::debug!(
-                    "unified_pty_reader: EOF reached, total bytes read: {total_bytes_read}, stdout_errors: {stdout_errors}"
+                    "forward_pty_to_stdout: EOF reached, total bytes read: {total_bytes_read}, stdout_errors: {stdout_errors}"
                 );
 
                 // Save any remaining buffered command data
@@ -98,21 +100,21 @@ pub fn unified_pty_reader(
                 break;
             }
             Ok(n) => {
-                log::trace!("unified_pty_reader: read {n} bytes");
+                log::trace!("forward_pty_to_stdout: read {n} bytes");
                 let data = &buffer[..n];
-                log::debug!("unified_pty_reader: processing {n} bytes of data");
+                log::debug!("forward_pty_to_stdout: processing {n} bytes of data");
 
                 // Write to stdout immediately
                 if let Err(e) = stdout.write_all(data) {
                     stdout_errors += 1;
                     log::warn!(
-                        "unified_pty_reader: Failed to write to stdout (error #{stdout_errors}): {e}"
+                        "forward_pty_to_stdout: Failed to write to stdout (error #{stdout_errors}): {e}"
                     );
                 }
                 if let Err(e) = stdout.flush() {
                     stdout_errors += 1;
                     log::warn!(
-                        "unified_pty_reader: Failed to flush stdout (error #{stdout_errors}): {e}"
+                        "forward_pty_to_stdout: Failed to flush stdout (error #{stdout_errors}): {e}"
                     );
                 }
 
@@ -127,7 +129,7 @@ pub fn unified_pty_reader(
                 // Look for plain text command markers
                 let data_str = String::from_utf8_lossy(&data_buffer);
                 log::trace!(
-                    "unified_pty_reader: checking buffer for markers, buffer size: {}",
+                    "forward_pty_to_stdout: checking buffer for markers, buffer size: {}",
                     data_buffer.len()
                 );
 
@@ -229,24 +231,24 @@ pub fn unified_pty_reader(
                 total_bytes_read += n as u64;
                 if total_bytes_read % (1024 * 1024) == 0 {
                     log::debug!(
-                        "unified_pty_reader: read {} MB",
+                        "forward_pty_to_stdout: read {} MB",
                         total_bytes_read / (1024 * 1024)
                     );
                 }
             }
             Err(e) => {
                 if e.kind() == io::ErrorKind::Interrupted {
-                    log::trace!("unified_pty_reader: interrupted, continuing");
+                    log::trace!("forward_pty_to_stdout: interrupted, continuing");
                     continue;
                 }
-                log::error!("unified_pty_reader: I/O error after {total_bytes_read} bytes: {e}");
+                log::error!("forward_pty_to_stdout: I/O error after {total_bytes_read} bytes: {e}");
                 return Err(e);
             }
         }
     }
 
     log::info!(
-        "unified_pty_reader completed: {total_bytes_read} bytes read, {stdout_errors} stdout errors"
+        "forward_pty_to_stdout_with_logging completed: {total_bytes_read} bytes read, {stdout_errors} stdout errors"
     );
     Ok(())
 }
