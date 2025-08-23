@@ -1,3 +1,4 @@
+mod bash_config;
 mod command_logger;
 mod io_forward;
 mod log_processor;
@@ -8,6 +9,7 @@ mod signals;
 mod symlink_utils;
 mod zsh_config;
 
+use bash_config::show_bash_rc;
 use chrono::Utc;
 use clap::{Parser, Subcommand};
 use session::Session;
@@ -48,6 +50,8 @@ enum Commands {
         )]
         cmd: Option<String>,
     },
+    /// Show bash configuration for shell integration
+    ShowBashRc,
     /// Show zsh configuration for shell integration
     ShowZshRc,
 }
@@ -56,6 +60,10 @@ fn main() -> Result<()> {
     let args = Args::parse();
 
     match args.command {
+        Commands::ShowBashRc => {
+            show_bash_rc();
+            Ok(())
+        }
         Commands::ShowZshRc => {
             show_zsh_rc();
             Ok(())
