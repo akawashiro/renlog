@@ -116,10 +116,18 @@ pub fn set_cbreak_mode(fd: RawFd) -> Result<Termios> {
     log::debug!("Saved original terminal attributes for fd: {fd}");
 
     // Configure cbreak mode: disable ICANON and ECHO, but keep ISIG for signal handling
-    use nix::sys::termios::{LocalFlags, SpecialCharacterIndices};
+    use nix::sys::termios::{InputFlags, LocalFlags, OutputFlags, SpecialCharacterIndices};
 
     termios.local_flags &= !(LocalFlags::ICANON | LocalFlags::ECHO);
     termios.local_flags |= LocalFlags::ISIG; // Keep signal processing enabled
+
+    // Properly handle newline conversions
+    // Clear problematic input flags first
+    termios.input_flags &= !(InputFlags::INLCR | InputFlags::IGNCR);
+    termios.input_flags |= InputFlags::ICRNL; // Convert CR to NL on input (Enter key)
+
+    // Output processing
+    termios.output_flags |= OutputFlags::ONLCR | OutputFlags::OPOST; // Convert NL to CR-NL on output
 
     // Set for immediate character reading
     termios.control_chars[SpecialCharacterIndices::VMIN as usize] = 1;
