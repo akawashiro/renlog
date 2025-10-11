@@ -1,6 +1,6 @@
 use crate::command_logger;
 use crate::io_forward::{forward_pty_to_stdout_with_logging, forward_stdin_to_pty};
-use crate::pty::{restore_termios, set_cbreak_mode, PtyPair};
+use crate::pty::{restore_termios, set_raw_mode, PtyPair};
 
 use nix::sys::termios::Termios;
 use nix::unistd;
@@ -91,7 +91,7 @@ impl Session {
         log::debug!("Checking if stdin is a TTY");
         let original_termios = if nix::unistd::isatty(libc::STDIN_FILENO).unwrap_or(false) {
             log::debug!("Setting stdin to cbreak mode");
-            Some(set_cbreak_mode(libc::STDIN_FILENO).map_err(|e| {
+            Some(set_raw_mode(libc::STDIN_FILENO).map_err(|e| {
                 log::error!("Failed to set cbreak mode: {e}");
                 io::Error::other(format!("Failed to set cbreak mode: {e}"))
             })?)
