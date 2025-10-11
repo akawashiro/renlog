@@ -2,6 +2,13 @@
 
 Renlog is a Rust re-implementation of [zenlog](https://github.com/omakoto/zenlog).
 
+## How to install
+```
+git clone git@github.com:akawashiro/renlog.git
+cd renlog
+cargo install --path .
+```
+
 ## Architecture
 
 ```mermaid
