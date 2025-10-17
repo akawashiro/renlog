@@ -132,7 +132,7 @@ pub fn save_command_log(
 
     // Write command metadata header
     let mut header = format!(
-        "# Renlog Command Log\n# Command: {}\n# Started: {}\n",
+        "# renlog Command Log\n# Command: {}\n# Started: {}\n",
         command,
         chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
     );

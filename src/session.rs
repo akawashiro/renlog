@@ -103,7 +103,7 @@ impl Session {
             log::info!("Terminal set to cbreak mode successfully");
         }
 
-        println!("Renlog starting... [PID={pid}]");
+        println!("renlog starting... [PID={pid}]");
 
         log::debug!("Ensuring command log directory exists");
         command_logger::ensure_log_directory(renlog_dir)?;

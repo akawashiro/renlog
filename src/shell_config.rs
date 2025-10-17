@@ -18,7 +18,7 @@ pub fn show_bash_rc() {
     println!(
         r#"
 #==============================================================================
-# Renlog Bash setup script
+# renlog Bash setup script
 #==============================================================================
 
 #==============================================================================
@@ -80,7 +80,7 @@ if [[ -n "$RENLOG_PID" ]]; then
         PROMPT_COMMAND="renlog_bash_postexec; $PROMPT_COMMAND"
     fi
     
-    echo "Renlog bash integration loaded (PID: $RENLOG_PID)"
+    echo "renlog bash integration loaded (PID: $RENLOG_PID)"
 fi
 
 "#
@@ -91,7 +91,7 @@ pub fn show_zsh_rc() {
     println!(
         r#"
 #==============================================================================
-# Renlog Zsh setup script
+# renlog Zsh setup script
 #==============================================================================
 
 #==============================================================================
@@ -146,7 +146,7 @@ if [[ -n "$RENLOG_PID" ]]; then
     precmd_functions=(renlog_zsh_postexec "$precmd_functions[@]")
     preexec_functions+=(renlog_zsh_preexec)
     
-    echo "Renlog zsh integration loaded (PID: $RENLOG_PID)"
+    echo "renlog zsh integration loaded (PID: $RENLOG_PID)"
 fi
 
 "#
