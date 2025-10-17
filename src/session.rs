@@ -29,6 +29,16 @@ pub struct Session {
 fn validate_fd(fd: RawFd, name: &str) -> Result<()> {
     use nix::fcntl::{fcntl, FcntlArg};
 
+    // See the following quotation from man fcntl(2):
+    //
+    // The  following  operations  manipulate  the  flags  associated with a file descriptor.
+    // Currently, only one such flag is defined: FD_CLOEXEC, the close-on-exec flag.  If the
+    // FD_CLOEXEC bit is set, the file descriptor will automatically be closed during a successful
+    // execve(2).  (If  the  ex‐ ecve(2) fails, the file descriptor is left open.)  If the
+    // FD_CLOEXEC bit is not set, the file descriptor will remain open across an execve(2).
+    //
+    // F_GETFD (void)
+    //        Return (as the function result) the file descriptor flags; arg is ignored.
     match fcntl(fd, FcntlArg::F_GETFD) {
         Ok(_) => {
             log::debug!("File descriptor {fd} ({name}) is valid");
