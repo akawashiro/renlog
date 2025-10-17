@@ -115,7 +115,9 @@ pub fn set_raw_mode(fd: RawFd) -> Result<Termios> {
     let original = termios.clone();
     log::debug!("Saved original terminal attributes for fd: {fd}");
 
-    use nix::sys::termios::{InputFlags, LocalFlags, OutputFlags, ControlFlags, SpecialCharacterIndices};
+    use nix::sys::termios::{
+        ControlFlags, InputFlags, LocalFlags, OutputFlags, SpecialCharacterIndices,
+    };
 
     // Raw mode: clear canonical mode, echo, signal processing, input/output processing, etc.
     termios.input_flags &= !(InputFlags::BRKINT
@@ -128,10 +130,8 @@ pub fn set_raw_mode(fd: RawFd) -> Result<Termios> {
 
     termios.control_flags |= ControlFlags::CS8;
 
-    termios.local_flags &= !(LocalFlags::ECHO
-        | LocalFlags::ICANON
-        | LocalFlags::IEXTEN
-        | LocalFlags::ISIG);
+    termios.local_flags &=
+        !(LocalFlags::ECHO | LocalFlags::ICANON | LocalFlags::IEXTEN | LocalFlags::ISIG);
 
     // Set for immediate character reading
     termios.control_chars[SpecialCharacterIndices::VMIN as usize] = 1;

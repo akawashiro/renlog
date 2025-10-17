@@ -52,6 +52,16 @@ pub fn forward_stdin_to_pty(mut input: File, mut output: File) -> Result<()> {
     Ok(())
 }
 
+fn should_skip_saving(command: &str) -> bool {
+    let skip_command_prefix = vec!["nvim", "pass"];
+    for prefix in skip_command_prefix {
+        if command.starts_with(prefix) {
+            return true;
+        }
+    }
+    false
+}
+
 // Forward output from PTY master to stdout with command detection and logging
 pub fn forward_pty_to_stdout_with_logging(
     mut input: File,
@@ -68,7 +78,9 @@ pub fn forward_pty_to_stdout_with_logging(
     let mut data_buffer = Vec::new();
     // Buffer for current command output
     let mut command_buffer = Vec::new();
-    let mut current_command: Option<String> = None;
+
+    // (Command name, should_skip_saving)
+    let mut current_command: Option<(String, bool)> = None;
 
     loop {
         match input.read(&mut buffer) {
@@ -79,7 +91,7 @@ pub fn forward_pty_to_stdout_with_logging(
 
                 // Save any remaining buffered command data
                 if !command_buffer.is_empty() {
-                    if let Some(ref cmd) = current_command {
+                    if let Some((ref cmd, false)) = current_command {
                         log::info!("Saving incomplete command buffer for: {cmd}");
                         match command_logger::save_command_log(
                             log_dir,
@@ -140,7 +152,7 @@ pub fn forward_pty_to_stdout_with_logging(
                         let parts: Vec<&str> = full_line.split_whitespace().collect();
 
                         // Save previous command if exists
-                        if let Some(ref prev_cmd) = current_command {
+                        if let Some((ref prev_cmd, false)) = current_command {
                             log::info!("Saving previous command log: {prev_cmd}");
                             match command_logger::save_command_log(
                                 log_dir,
@@ -165,7 +177,8 @@ pub fn forward_pty_to_stdout_with_logging(
                             "unknown".to_string()
                         };
                         log::info!("Starting new command buffer for: {command_str}");
-                        current_command = Some(command_str);
+                        let should_skip_saving = should_skip_saving(&command_str);
+                        current_command = Some((command_str, should_skip_saving));
                         command_buffer.clear();
 
                         // Remove processed part from buffer
@@ -191,7 +204,7 @@ pub fn forward_pty_to_stdout_with_logging(
                             None
                         };
 
-                        if let Some(ref cmd) = current_command {
+                        if let Some((ref cmd, false)) = current_command {
                             log::info!("Ending command '{cmd}' with exit status: {exit_status:?}");
                             match command_logger::save_command_log(
                                 log_dir,
