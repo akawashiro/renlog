@@ -83,12 +83,17 @@ fn strip_ansi_codes_and_command_markers(input: &[u8]) -> Vec<u8> {
     fully_cleaned.into_owned().into_bytes()
 }
 
-pub fn process_command_log_content(input: &[u8]) -> Vec<u8> {
-    // First truncate after end command to remove any unwanted content
-    let truncated = truncate_after_end_command(input);
+// TODO: Make faster. Converting to String and back is inefficient.
+fn replace_crlf_with_lf(input: Vec<u8>) -> Vec<u8> {
+    let input_str = String::from_utf8_lossy(&input);
+    let normalized = input_str.replace("\r\n", "\n");
+    normalized.into_bytes()
+}
 
-    // Then strip ANSI codes and command markers
-    strip_ansi_codes_and_command_markers(&truncated)
+pub fn process_command_log_content(input: &[u8]) -> Vec<u8> {
+    let truncated = truncate_after_end_command(input);
+    let striped = strip_ansi_codes_and_command_markers(&truncated);
+    replace_crlf_with_lf(striped)
 }
 
 #[cfg(test)]
