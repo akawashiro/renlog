@@ -172,10 +172,10 @@ impl Session {
 
         // Set up the current log file marker path for shell integration (PID-specific to avoid conflicts)
         let current_log_marker = format!("{}/.renlog_current_log_{}", &self.renlog_dir, self.pid);
-        cmd.env("RENLOG_LOG_FILE", &current_log_marker);
+        cmd.env("RENLOG_LAST_LOG_FILE", &current_log_marker);
 
         log::debug!(
-            "Set environment variables: RENLOG_PID={}, RENLOG_LOG_FILE={}",
+            "Set environment variables: RENLOG_PID={}, RENLOG_LAST_LOG_FILE={}",
             self.pid,
             &current_log_marker
         );

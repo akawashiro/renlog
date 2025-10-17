@@ -51,8 +51,8 @@ function renlog_bash_postexec() {{
         printf '\e[1A\e[2K'
         
         # Display current log file if available
-        if [[ -n "$RENLOG_LOG_FILE" && -f "$RENLOG_LOG_FILE" ]]; then
-            local current_log="$(cat "$RENLOG_LOG_FILE" 2>/dev/null)"
+        if [[ -n "$RENLOG_LAST_LOG_FILE" && -f "$RENLOG_LAST_LOG_FILE" ]]; then
+            local current_log="$(cat "$RENLOG_LAST_LOG_FILE" 2>/dev/null)"
             if [[ -n "$current_log" ]]; then
                 echo "[$current_log]"
             fi
@@ -123,8 +123,8 @@ function renlog_zsh_postexec() {{
         printf '\e[1A\e[2K'
         
         # Display current log file if available
-        if [[ -n "$RENLOG_LOG_FILE" && -f "$RENLOG_LOG_FILE" ]]; then
-            local current_log="$(cat "$RENLOG_LOG_FILE" 2>/dev/null)"
+        if [[ -n "$RENLOG_LAST_LOG_FILE" && -f "$RENLOG_LAST_LOG_FILE" ]]; then
+            local current_log="$(cat "$RENLOG_LAST_LOG_FILE" 2>/dev/null)"
             if [[ -n "$current_log" ]]; then
                 echo "[$current_log]"
             fi
