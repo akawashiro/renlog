@@ -103,8 +103,6 @@ impl Session {
             log::info!("Terminal set to cbreak mode successfully");
         }
 
-        println!("renlog starting... [PID={pid}]");
-
         log::debug!("Ensuring command log directory exists");
         command_logger::ensure_log_directory(renlog_dir)?;
 
@@ -281,7 +279,6 @@ impl Session {
         *child_guard = Some(child);
 
         log::info!("Child process started with PID: {child_pid}");
-        println!("Child process started with PID: {child_pid}");
         Ok(())
     }
 

@@ -129,8 +129,6 @@ fn run_renlog_session(renlog_dir: &str, custom_cmd: Option<&str>) -> Result<i32>
     // Spawn signal handler thread
     let signal_thread = signal_handler.start_handler_thread(master_fd.clone(), session_callbacks);
 
-    println!("Session initialized. Type 'exit' to quit.");
-
     let exit_code = session.wait_for_child()?;
 
     // Clear the master fd to stop signal handling
