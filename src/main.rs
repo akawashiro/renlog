@@ -22,7 +22,7 @@ use symlink_utils::create_or_update_symlink;
 #[command(name = "renlog")]
 #[command(about = "Rust implementation of zenlog")]
 #[command(
-    long_about = "Renlog - Rust implementation of zenlog\nRust-based logging tool with command boundary detection"
+    long_about = "renlog - Rust implementation of zenlog\nRust-based logging tool with command boundary detection"
 )]
 struct Args {
     #[command(subcommand)]
@@ -94,21 +94,21 @@ fn run_log_session(renlog_dir: &str, log_level: &str, custom_cmd: Option<&str>) 
         log::warn!("Failed to create renlog-latest.log symlink: {e}");
     }
 
-    log::info!("Starting Renlog (Rust implementation of zenlog)...");
-    println!("Starting Renlog (Rust implementation of zenlog)...");
+    log::info!("Starting renlog (Rust implementation of zenlog)...");
+    println!("Starting renlog (Rust implementation of zenlog)...");
 
     // Try to start renlog session
     let result = run_renlog_session(renlog_dir, custom_cmd);
 
     match result {
         Ok(exit_code) => {
-            log::info!("Renlog session ended with exit code: {exit_code}");
-            println!("Renlog session ended with exit code: {exit_code}");
+            log::info!("renlog session ended with exit code: {exit_code}");
+            println!("renlog session ended with exit code: {exit_code}");
             Ok(())
         }
         Err(e) => {
-            log::error!("Renlog session failed: {e}");
-            eprintln!("Renlog failed to start: {e}");
+            log::error!("renlog session failed: {e}");
+            eprintln!("renlog failed to start: {e}");
             std::process::exit(1);
         }
     }
@@ -128,8 +128,6 @@ fn run_renlog_session(renlog_dir: &str, custom_cmd: Option<&str>) -> Result<i32>
 
     // Spawn signal handler thread
     let signal_thread = signal_handler.start_handler_thread(master_fd.clone(), session_callbacks);
-
-    println!("Session initialized. Type 'exit' to quit.");
 
     let exit_code = session.wait_for_child()?;
 

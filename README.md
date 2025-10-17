@@ -1,6 +1,6 @@
-# Renlog - Rust Implementation of Zenlog
+# renlog - Rust Implementation of Zenlog
 
-Renlog is a Rust re-implementation of [zenlog](https://github.com/omakoto/zenlog).
+renlog is a Rust re-implementation of [Zenlog](https://github.com/omakoto/zenlog).
 
 ## How to install
 ```

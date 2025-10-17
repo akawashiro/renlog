@@ -90,9 +90,9 @@ impl Session {
         // Set stdin to cbreak mode (only if it's a TTY)
         log::debug!("Checking if stdin is a TTY");
         let original_termios = if nix::unistd::isatty(libc::STDIN_FILENO).unwrap_or(false) {
-            log::debug!("Setting stdin to cbreak mode");
+            log::debug!("Setting stdin to raw mode");
             Some(set_raw_mode(libc::STDIN_FILENO).map_err(|e| {
-                log::error!("Failed to set cbreak mode: {e}");
+                log::error!("Failed to set raw mode: {e}");
                 io::Error::other(format!("Failed to set cbreak mode: {e}"))
             })?)
         } else {
@@ -102,8 +102,6 @@ impl Session {
         if original_termios.is_some() {
             log::info!("Terminal set to cbreak mode successfully");
         }
-
-        println!("Renlog starting... [PID={pid}]");
 
         log::debug!("Ensuring command log directory exists");
         command_logger::ensure_log_directory(renlog_dir)?;
@@ -281,7 +279,6 @@ impl Session {
         *child_guard = Some(child);
 
         log::info!("Child process started with PID: {child_pid}");
-        println!("Child process started with PID: {child_pid}");
         Ok(())
     }
 

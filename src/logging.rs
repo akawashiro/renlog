@@ -98,7 +98,7 @@ pub fn init_logging(log_file: &str, log_level: &str) -> Result<()> {
     match init_file_logging(log_file, level_filter) {
         Ok(()) => {
             LOGGING_ENABLED.store(true, Ordering::Relaxed);
-            log::info!("Renlog internal logging initialized to file: {log_file}");
+            log::info!("renlog internal logging initialized to file: {log_file}");
             Ok(())
         }
         Err(e) => {
