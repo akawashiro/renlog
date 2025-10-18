@@ -117,10 +117,11 @@ pub fn save_command_log(
         ))
     })?;
 
-    // Write command metadata header
+    // Write command metadata header with masked passwords
+    let masked_command = log_processor::mask_passwords_in_text(command);
     let mut header = format!(
         "# renlog Command Log\n# Command: {}\n# Started: {}\n",
-        command,
+        masked_command,
         chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
     );
 
