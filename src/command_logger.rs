@@ -64,30 +64,16 @@ fn truncate_filename_to_limit(filename: &str) -> String {
     result
 }
 
-pub fn ensure_log_directory(log_dir: &str) -> Result<()> {
-    log::debug!("Ensuring command log directory exists: {log_dir}");
-
-    std::fs::create_dir_all(log_dir).map_err(|e| {
-        log::error!("Failed to create command log directory '{log_dir}': {e}");
-        std::io::Error::other(format!(
-            "Failed to create command log directory '{log_dir}': {e}"
-        ))
-    })?;
-
-    log::info!("Command log directory ensured: {log_dir}");
-    Ok(())
-}
-
-fn create_latest_symlink(log_dir: &str, filename: &str) -> Result<()> {
-    let latest_path = Path::new(log_dir).join("latest.log");
+fn create_latest_symlink(log_dir: &Path, filename: &str) -> Result<()> {
+    let latest_path = log_dir.join("latest.log");
     create_or_update_symlink(filename, &latest_path)?;
     log::info!("Created latest.log symlink pointing to: {filename}");
     Ok(())
 }
 
 /// Update the current log file tracking file (PID-specific to avoid conflicts)
-fn update_current_log_file(log_dir: &str, log_file_path: &str, pid: u32) -> Result<()> {
-    let current_log_marker = Path::new(log_dir).join(format!(".renlog_current_log_{pid}"));
+fn update_current_log_file(log_dir: &Path, log_file_path: &str, pid: u32) -> Result<()> {
+    let current_log_marker = log_dir.join(".renlog_current_log");
     std::fs::write(&current_log_marker, log_file_path).map_err(|e| {
         log::warn!("Failed to update current log file marker: {e}");
         e
@@ -97,7 +83,7 @@ fn update_current_log_file(log_dir: &str, log_file_path: &str, pid: u32) -> Resu
 }
 
 pub fn save_command_log(
-    log_dir: &str,
+    log_dir: &Path,
     command: &str,
     data: &[u8],
     exit_status: Option<i32>,
