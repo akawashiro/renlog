@@ -37,13 +37,15 @@ function renlog_bash_preexec() {{
         printf '\r\e[K'
         # Additional fallback: move cursor up and clear line if previous method insufficient
         printf '\e[1A\e[2K'
+        # Mark that we've started a command
+        RENLOG_COMMAND_STARTED=1
     fi
 }}
 
 # Execute this function after each command to tell renlog to stop logging
 function renlog_bash_postexec() {{
     local last_status=$?
-    if [[ -n "$RENLOG_PID" ]]; then
+    if [[ -n "$RENLOG_PID" && "$RENLOG_COMMAND_STARTED" == "1" ]]; then
         # Send end command marker to renlog via invisible stdout with better terminal handling
         printf '{END_COMMAND_NAME} %d\n' "$last_status"
         # Use more reliable cursor manipulation with carriage return + clear line
@@ -58,6 +60,8 @@ function renlog_bash_postexec() {{
                 echo "[$current_log]"
             fi
         fi
+        # Reset the flag
+        RENLOG_COMMAND_STARTED=0
     fi
     # Return the original exit status to preserve it
     return $last_status
@@ -109,13 +113,15 @@ function renlog_zsh_preexec() {{
         printf '\r\e[K'
         # Additional fallback: move cursor up and clear line if previous method insufficient
         printf '\e[1A\e[2K'
+        # Mark that we've started a command
+        RENLOG_COMMAND_STARTED=1
     fi
 }}
 
 # Execute this command in Zsh's precmd_functions to tell renlog to stop logging for the current command.
 function renlog_zsh_postexec() {{
     local last_status=$?
-    if [[ -n "$RENLOG_PID" ]]; then
+    if [[ -n "$RENLOG_PID" && "$RENLOG_COMMAND_STARTED" == "1" ]]; then
         # Send end command marker to renlog via invisible stdout with better terminal handling
         printf '{END_COMMAND_NAME} %d\n' "$last_status"
         # Use more reliable cursor manipulation with carriage return + clear line
@@ -130,6 +136,8 @@ function renlog_zsh_postexec() {{
                 echo "[$current_log]"
             fi
         fi
+        # Reset the flag
+        RENLOG_COMMAND_STARTED=0
     fi
 }}
 
