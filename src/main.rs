@@ -67,6 +67,8 @@ fn main() -> Result<()> {
             Ok(())
         }
         Commands::Log { renlog_dir, cmd } => {
+            let pid = std::process::id();
+            let renlog_dir = renlog_dir + &format!("/{}", pid);
             run_log_session(&renlog_dir, &args.log_level, cmd.as_deref())
         }
     }
