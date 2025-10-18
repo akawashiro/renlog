@@ -1,5 +1,6 @@
 use crate::log_processor;
 use crate::symlink_utils::create_or_update_symlink;
+use crate::shell_config::LAST_LOG_FILE;
 use std::fs::File;
 use std::io::{Result, Write};
 use std::path::{Path, PathBuf};
@@ -73,7 +74,7 @@ fn create_latest_symlink(log_dir: &Path, filename: &str) -> Result<()> {
 
 /// Update the current log file tracking file (PID-specific to avoid conflicts)
 fn update_current_log_file(log_dir: &Path, log_file_path: &str, pid: u32) -> Result<()> {
-    let current_log_marker = log_dir.join(".renlog_current_log");
+    let current_log_marker = log_dir.join(LAST_LOG_FILE);
     std::fs::write(&current_log_marker, log_file_path).map_err(|e| {
         log::warn!("Failed to update current log file marker: {e}");
         e
