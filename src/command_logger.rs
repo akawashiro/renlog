@@ -1,6 +1,6 @@
 use crate::log_processor;
-use crate::symlink_utils::create_or_update_symlink;
 use crate::shell_config::LAST_LOG_FILE;
+use crate::symlink_utils::create_or_update_symlink;
 use std::fs::File;
 use std::io::{Result, Write};
 use std::path::{Path, PathBuf};

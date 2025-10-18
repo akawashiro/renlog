@@ -1,4 +1,4 @@
-use signal_hook::consts::signal::{SIGCHLD, SIGHUP, SIGINT, SIGQUIT, SIGTSTP, SIGUSR2, SIGWINCH};
+use signal_hook::consts::signal::{SIGCHLD, SIGHUP, SIGINT, SIGQUIT, SIGTSTP, SIGWINCH};
 use signal_hook::iterator::Signals;
 use std::collections::HashSet;
 use std::fs;
@@ -24,7 +24,9 @@ pub struct SignalHandler {
 impl SignalHandler {
     pub fn new() -> Result<Self> {
         log::debug!("Initializing signal handler for all signals");
-        log::info!("Signal handler initialized for SIGCHLD, SIGWINCH, SIGHUP, SIGUSR2, SIGINT, SIGQUIT, SIGTSTP");
+        log::info!(
+            "Signal handler initialized for SIGCHLD, SIGWINCH, SIGHUP, SIGINT, SIGQUIT, SIGTSTP"
+        );
         Ok(SignalHandler {})
     }
 
@@ -245,9 +247,8 @@ impl SignalHandler {
             log::debug!("Starting signal handler thread");
 
             // Create the signals iterator inside the thread
-            let signals = match Signals::new([
-                SIGCHLD, SIGWINCH, SIGHUP, SIGUSR2, SIGINT, SIGQUIT, SIGTSTP,
-            ]) {
+            let signals = match Signals::new([SIGCHLD, SIGWINCH, SIGHUP, SIGINT, SIGQUIT, SIGTSTP])
+            {
                 Ok(s) => s,
                 Err(e) => {
                     log::error!("Failed to create signal handler: {e}");
@@ -327,10 +328,6 @@ impl SignalHandler {
                     log::debug!("Caught SIGHUP signal");
                     self.handle_sighup(&callbacks);
                 }
-                SIGUSR2 => {
-                    log::debug!("Caught SIGUSR2 signal");
-                    self.handle_sigusr2();
-                }
                 SIGINT => {
                     log::debug!("Caught SIGINT signal");
                     self.handle_sigint(&callbacks);
@@ -397,18 +394,6 @@ impl SignalHandler {
         // Signal graceful shutdown
         let mut shutdown_guard = callbacks.shutdown_flag.lock().unwrap();
         *shutdown_guard = true;
-    }
-
-    fn handle_sigusr2(&self) {
-        log::info!("Caught SIGUSR2; dumping stack traces");
-
-        // In Rust, we can use backtrace or just log the signal receipt
-        // For now, we'll just log it as zenlog does with goroutine dumps
-        println!("SIGUSR2 received - stack trace dump requested");
-
-        // You could add backtrace here if needed:
-        // let bt = std::backtrace::Backtrace::capture();
-        // println!("Backtrace:\n{}", bt);
     }
 
     fn handle_sigint(&self, callbacks: &SessionCallbacks) {
