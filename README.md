@@ -58,7 +58,7 @@ graph TB
     %% Signal handling
     SH -->|SIGWINCH| PM
     SH -->|SIGINT/SIGTERM| SHELL
-    SH -->|SIGCHLD/SIGHUP/SIGUSR2| MP
+    SH -->|SIGCHLD/SIGHUP| MP
     
     style MP fill:#e1f5fe
     style SHELL fill:#fff3e0
@@ -83,7 +83,6 @@ graph TB
    - SIGWINCH for terminal window resize events (forwarded to PTY master)
    - SIGCHLD for child process termination (handled by main process)
    - SIGHUP for session hangup (handled by main process)
-   - SIGUSR2 for debug information (handled by main process)
    - SIGINT/SIGTERM for interrupt/termination (forwarded to child process)
 
 4. **Signal Forwarding**: When users press Ctrl+C or send termination signals, the signal handler forwards SIGINT/SIGTERM to the child process, enabling proper termination of interactive applications like `top`, `htop`, `vim`, etc.
