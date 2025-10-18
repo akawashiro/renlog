@@ -93,8 +93,8 @@ fn run_log_session(renlog_dir: &Path, log_level: &str, custom_cmd: Option<&str>)
         log::warn!("Failed to create renlog-latest.log symlink: {e}");
     }
 
-    log::info!("Starting renlog (Rust implementation of zenlog)...");
-    println!("Starting renlog (Rust implementation of zenlog)...");
+    log::info!("Starting renlog...");
+    println!("Starting renlog...");
     let result = run_renlog_session(renlog_dir, custom_cmd);
 
     match result {
