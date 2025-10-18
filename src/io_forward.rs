@@ -29,7 +29,7 @@ pub fn forward_stdin_to_pty(mut input: File, mut output: File) -> Result<()> {
                 output.flush()?;
 
                 total_bytes_forwarded += n as u64;
-                if total_bytes_forwarded % (1024 * 1024) == 0 {
+                if total_bytes_forwarded.is_multiple_of(1024 * 1024) {
                     log::debug!(
                         "forward_stdin_to_pty: forwarded {} MB",
                         total_bytes_forwarded / (1024 * 1024)
@@ -243,7 +243,7 @@ pub fn forward_pty_to_stdout_with_logging(
                 }
 
                 total_bytes_read += n as u64;
-                if total_bytes_read % (1024 * 1024) == 0 {
+                if total_bytes_read.is_multiple_of(1024 * 1024) {
                     log::debug!(
                         "forward_pty_to_stdout: read {} MB",
                         total_bytes_read / (1024 * 1024)
