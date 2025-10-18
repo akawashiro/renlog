@@ -1,4 +1,3 @@
-use crate::command_logger;
 use crate::io_forward::{forward_pty_to_stdout_with_logging, forward_stdin_to_pty};
 use crate::pty::{restore_termios, set_raw_mode, PtyPair};
 
@@ -9,6 +8,8 @@ use std::fs::File;
 use std::io::{self, Result};
 use std::os::unix::io::{FromRawFd, RawFd};
 use std::os::unix::process::CommandExt;
+use std::path::Path;
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -19,7 +20,7 @@ pub struct Session {
     child: Arc<Mutex<Option<Child>>>,
     original_termios: Option<Termios>,
     pid: u32,
-    renlog_dir: String,
+    renlog_dir: PathBuf,
     exit_status: Arc<Mutex<Option<i32>>>,
     shutdown_flag: Arc<Mutex<bool>>,
     custom_cmd: Option<String>,
@@ -79,18 +80,18 @@ fn ensure_fd_ready(fd: RawFd, name: &str) -> Result<()> {
 }
 
 impl Session {
-    pub fn new(renlog_dir: &str, custom_cmd: Option<&str>) -> Result<Self> {
+    pub fn new(renlog_dir: &Path, custom_cmd: Option<&str>) -> Result<Self> {
         log::debug!("Creating new Session instance");
         let pid = std::process::id();
         log::info!(
-            "Session initializing with PID={pid} renlog_dir={renlog_dir} custom_cmd={custom_cmd:?}"
+            "Session initializing with PID={pid} renlog_dir={renlog_dir:?} custom_cmd={custom_cmd:?}"
         );
 
         // Create the log directory if it doesn't exist
         std::fs::create_dir_all(renlog_dir).map_err(|e| {
-            log::error!("Failed to create renlog log directory '{renlog_dir}': {e}");
+            log::error!("Failed to create renlog log directory '{renlog_dir:?}': {e}");
             io::Error::other(format!(
-                "Failed to create renlog log directory '{renlog_dir}': {e}"
+                "Failed to create renlog log directory '{renlog_dir:?}': {e}"
             ))
         })?;
 
@@ -113,16 +114,13 @@ impl Session {
             log::info!("Terminal set to cbreak mode successfully");
         }
 
-        log::debug!("Ensuring command log directory exists");
-        command_logger::ensure_log_directory(renlog_dir)?;
-
         log::info!("Session instance created successfully");
         Ok(Session {
             pty,
             child: Arc::new(Mutex::new(None)),
             original_termios,
             pid,
-            renlog_dir: renlog_dir.to_string(),
+            renlog_dir: renlog_dir.to_path_buf(),
             exit_status: Arc::new(Mutex::new(None)),
             shutdown_flag: Arc::new(Mutex::new(false)),
             custom_cmd: custom_cmd.map(|s| s.to_string()),
@@ -167,18 +165,11 @@ impl Session {
             *cmd_name_guard = command_name;
         }
 
-        // Set environment variables that the shell integration would use
         cmd.env("RENLOG_PID", self.pid.to_string());
 
-        // Set up the current log file marker path for shell integration (PID-specific to avoid conflicts)
-        let current_log_marker = format!("{}/.renlog_current_log_{}", &self.renlog_dir, self.pid);
+        let mut current_log_marker = self.renlog_dir.clone().into_os_string();
+        current_log_marker.push("/.renlog_current_log");
         cmd.env("RENLOG_LAST_LOG_FILE", &current_log_marker);
-
-        log::debug!(
-            "Set environment variables: RENLOG_PID={}, RENLOG_LAST_LOG_FILE={}",
-            self.pid,
-            &current_log_marker
-        );
 
         // Set up stdio to use the PTY slave (duplicate fd for each stdio stream)
         let slave_fd = self.pty.slave_fd();
@@ -426,14 +417,6 @@ impl Session {
 impl Drop for Session {
     fn drop(&mut self) {
         log::debug!("Session Drop trait called - starting cleanup");
-
-        // Clean up PID-specific current log tracking file
-        let current_log_marker = format!("{}/.renlog_current_log_{}", &self.renlog_dir, self.pid);
-        if let Err(e) = std::fs::remove_file(&current_log_marker) {
-            log::debug!("Could not remove current log marker file: {e}");
-        } else {
-            log::debug!("Removed current log marker file: {current_log_marker}");
-        }
 
         // Restore original terminal settings
         if let Some(termios) = &self.original_termios {

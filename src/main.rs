@@ -68,16 +68,13 @@ fn main() -> Result<()> {
         }
         Commands::Log { renlog_dir, cmd } => {
             let pid = std::process::id();
-            let renlog_dir = Path::new(&renlog_dir)
-                .join(format!("{}", pid))
-                .to_string_lossy()
-                .to_string();
+            let renlog_dir = Path::new(&renlog_dir).join(format!("{}", pid));
             run_log_session(&renlog_dir, &args.log_level, cmd.as_deref())
         }
     }
 }
 
-fn run_log_session(renlog_dir: &str, log_level: &str, custom_cmd: Option<&str>) -> Result<()> {
+fn run_log_session(renlog_dir: &Path, log_level: &str, custom_cmd: Option<&str>) -> Result<()> {
     let timestamp = Utc::now().format("%Y%m%d_%H%M%S_%3f").to_string();
     let log_filename = format!("renlog_{timestamp}.log");
     let log_file_path = Path::new(renlog_dir).join(&log_filename);
@@ -85,7 +82,7 @@ fn run_log_session(renlog_dir: &str, log_level: &str, custom_cmd: Option<&str>) 
 
     std::fs::create_dir_all(renlog_dir).map_err(|e| {
         std::io::Error::other(format!(
-            "Failed to create renlog directory '{renlog_dir}': {e}"
+            "Failed to create renlog directory '{renlog_dir:?}': {e}"
         ))
     })?;
 
@@ -114,7 +111,7 @@ fn run_log_session(renlog_dir: &str, log_level: &str, custom_cmd: Option<&str>) 
     }
 }
 
-fn run_renlog_session(renlog_dir: &str, custom_cmd: Option<&str>) -> Result<i32> {
+fn run_renlog_session(renlog_dir: &Path, custom_cmd: Option<&str>) -> Result<i32> {
     let mut session = Session::new(renlog_dir, custom_cmd)?;
 
     session.start_child()?;
