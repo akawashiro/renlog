@@ -1,5 +1,6 @@
 use crate::io_forward::{forward_pty_to_stdout_with_logging, forward_stdin_to_pty};
 use crate::pty::{restore_termios, set_raw_mode, PtyPair};
+use crate::shell_config::LAST_LOG_FILE;
 
 use nix::sys::termios::Termios;
 use nix::unistd;
@@ -167,9 +168,9 @@ impl Session {
 
         cmd.env("RENLOG_PID", self.pid.to_string());
 
-        let mut current_log_marker = self.renlog_dir.clone().into_os_string();
-        current_log_marker.push("/.renlog_current_log");
-        cmd.env("RENLOG_LAST_LOG_FILE", &current_log_marker);
+        let mut last_log_file = self.renlog_dir.clone().into_os_string();
+        last_log_file.push(format!("/{}", LAST_LOG_FILE));
+        cmd.env("RENLOG_LAST_LOG_FILE", &last_log_file);
 
         // Set up stdio to use the PTY slave (duplicate fd for each stdio stream)
         let slave_fd = self.pty.slave_fd();

@@ -1,6 +1,7 @@
 /// Command names used in shell integration
 pub const START_COMMAND_NAME: &str = "renlog-start-command";
 pub const END_COMMAND_NAME: &str = "renlog-end-command";
+pub const LAST_LOG_FILE: &str = "renlog_current_log";
 
 pub enum ShellType {
     Bash,
