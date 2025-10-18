@@ -2,6 +2,33 @@
 
 renlog is a Rust re-implementation of [Zenlog](https://github.com/omakoto/zenlog).
 
+## Features
+
+- **Command Logging**: Automatically logs all shell commands and their output to separate files
+- **Password Masking**: Automatically masks passwords and sensitive credentials in log files for security
+- **Shell Integration**: Works seamlessly with Bash and Zsh
+- **Terminal Support**: Full PTY support with proper signal handling
+
+### Password Masking
+
+renlog automatically masks passwords and sensitive credentials in saved log files, making it safe to use with commands that contain:
+
+- Command line flags: `-p password`, `--password=secret`
+- API keys and tokens: `--api-key=value`, `--token=value`
+- Connection strings: `mysql://user:pass@host`, `postgresql://user:pass@host`
+- HTTP(S) URLs with credentials: `https://user:pass@host`
+- Environment variables: `PASSWORD=secret`, `API_KEY=secret`
+- Tool-specific formats: `mysql -pPassword`, `curl --user user:pass`
+
+Example:
+```bash
+# Command entered:
+mysql -u root -psecret123 -h localhost
+
+# Saved in log:
+mysql -u root -p*** -h localhost
+```
+
 ## Install
 
 ```bash
