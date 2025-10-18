@@ -68,20 +68,21 @@ fn main() -> Result<()> {
         }
         Commands::Log { renlog_dir, cmd } => {
             let pid = std::process::id();
-            let renlog_dir = renlog_dir + &format!("/{}", pid);
+            let renlog_dir = Path::new(&renlog_dir)
+                .join(format!("{}", pid))
+                .to_string_lossy()
+                .to_string();
             run_log_session(&renlog_dir, &args.log_level, cmd.as_deref())
         }
     }
 }
 
 fn run_log_session(renlog_dir: &str, log_level: &str, custom_cmd: Option<&str>) -> Result<()> {
-    // Construct the log file path in the renlog log directory
     let timestamp = Utc::now().format("%Y%m%d_%H%M%S_%3f").to_string();
     let log_filename = format!("renlog_{timestamp}.log");
     let log_file_path = Path::new(renlog_dir).join(&log_filename);
     let log_file_str = log_file_path.to_string_lossy();
 
-    // Create the log directory if it doesn't exist
     std::fs::create_dir_all(renlog_dir).map_err(|e| {
         std::io::Error::other(format!(
             "Failed to create renlog directory '{renlog_dir}': {e}"
@@ -90,7 +91,6 @@ fn run_log_session(renlog_dir: &str, log_level: &str, custom_cmd: Option<&str>) 
 
     logging::init_logging(&log_file_str, log_level)?;
 
-    // Create symlink for renlog-latest.log pointing to the current renlog internal log file
     let renlog_latest_path = Path::new(renlog_dir).join("renlog-latest.log");
     if let Err(e) = create_or_update_symlink(&log_filename, &renlog_latest_path) {
         log::warn!("Failed to create renlog-latest.log symlink: {e}");
@@ -98,8 +98,6 @@ fn run_log_session(renlog_dir: &str, log_level: &str, custom_cmd: Option<&str>) 
 
     log::info!("Starting renlog (Rust implementation of zenlog)...");
     println!("Starting renlog (Rust implementation of zenlog)...");
-
-    // Try to start renlog session
     let result = run_renlog_session(renlog_dir, custom_cmd);
 
     match result {
