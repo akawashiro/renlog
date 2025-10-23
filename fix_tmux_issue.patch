@@ -1,0 +1,46 @@
+diff --git a/src/session.rs b/src/session.rs
+index abc1234..def5678 100644
+--- a/src/session.rs
++++ b/src/session.rs
+@@ -209,10 +209,28 @@ impl Session {
+ 
+         // Set up process group handling for proper signal delivery
+         unsafe {
++            let slave_fd_to_close = slave_fd;
+             cmd.pre_exec(move || {
+                 // Validate that standard I/O file descriptors are available
+                 use nix::fcntl::{fcntl, FcntlArg};
+ 
++                // IMPORTANT: Close the original slave FD in the child process
++                // This prevents FD leakage to tmux or other processes
++                if libc::close(slave_fd_to_close) == -1 {
++                    let err = std::io::Error::last_os_error();
++                    eprintln!("WARNING: Failed to close slave FD in child: {err}");
++                }
++
++                // Set close-on-exec flag for all FDs except stdin/stdout/stderr
++                for fd in 3..256 {
++                    // Skip our duplicated FDs that we're using for stdio
++                    if fd == stdin_fd || fd == stdout_fd || fd == stderr_fd {
++                        continue;
++                    }
++                    // Set FD_CLOEXEC flag
++                    let _ = fcntl(fd, FcntlArg::F_SETFD(nix::fcntl::FdFlag::FD_CLOEXEC));
++                }
++
+                 // Check stdin (fd 0)
+                 if fcntl(0, FcntlArg::F_GETFD).is_err() {
+                     eprintln!("ERROR: stdin (fd 0) is not available in child process");
+@@ -240,6 +258,12 @@ impl Session {
+                     return Err(err);
+                 }
+ 
++                // Set controlling terminal for the new session
++                if libc::ioctl(0, libc::TIOCSCTTY, 0) == -1 {
++                    let err = std::io::Error::last_os_error();
++                    eprintln!("WARNING: Failed to set controlling terminal: {err}");
++                }
++
+                 Ok(())
+             });
+         }

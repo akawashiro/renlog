@@ -1,0 +1,7 @@
+Script started on 2025-08-23 15:00:38+09:00 [TERM="xterm-256color" TTY="/dev/pts/0" COLUMNS="170" LINES="44"]
+Setup ssh-agent with gpg-agent because I found the gpg key.
+gpg-agent: a gpg-agent is already running - not starting a new one
+[1m[7m%[27m[1m[0m                                                                                                                                                                          [0m[27m[24m[J[32m[@masumi][00m[31m(main)[39m~/ghq/github.com/akawashiro/renlog
+$ [K[?1h=[?2004hs eexit[?1l>[?2004l
+
+Script done on 2025-08-23 15:00:42+09:00 [COMMAND_EXIT_CODE="0"]

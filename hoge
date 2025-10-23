@@ -1,0 +1,304 @@
+# RustでPTYを使ったscriptコマンド風プログラムの実装方法
+
+RustでPTY（擬似端末）を使ってscriptコマンドのようなプログラムを実装する方法について、包括的な調査結果をお伝えします。**最も効果的なアプローチは、`portable-pty`クレートと`termios`を組み合わせ、cbreakモードを使用してリアルタイム入力とシグナル処理を両立させることです**。raw modeではCtrl+Cが通常のバイトとして扱われるため、手動検出が必要になりますが、cbreakモードならISIGフラグを維持したままリアルタイム入力が可能です。以下、要件ごとに具体的な実装方法を解説します。
+
+## ターミナルモードの基礎：raw、cbreak、cookedの違い
+
+ターミナルプログラミングの核心は、3つのモードの理解にあります。**cookedモード（標準）**では入力が行単位でバッファリングされ、Enterキーを待ってから処理されます。これに対し、**raw mode**は完全な制御を提供し、すべての文字を即座に未加工で受け取りますが、**Ctrl+Cなどのシグナル生成も無効化**されます。ここで重要なのが**cbreakモード**で、1文字ずつのリアルタイム入力を可能にしながら、シグナル処理は有効のまま維持できる、まさに今回の要件に最適なモードです。
+
+termiosの`ISIG`フラグが、この動作の鍵を握っています。ISIGが有効な場合、Ctrl+C（0x03）はSIGINTシグナルを生成し、文字として渡されません。無効な場合は、単なるバイト0x03として扱われます。`ICANON`フラグは行バッファリングを制御し、`ECHO`は入力文字の画面表示を制御します。これらのフラグの組み合わせで、必要な動作を実現できます。
+
+## 推奨ライブラリと基本実装
+
+Rustでのscriptコマンド実装には、**`portable-pty`と`termios`の組み合わせ**が最も効果的です。`portable-pty`はクロスプラットフォーム対応の高レベルAPIを提供し、`termios`で細かなターミナル属性を制御できます。
+
+```rust
+use portable_pty::{native_pty_system, PtySize, CommandBuilder};
+use termios::{Termios, tcgetattr, tcsetattr, TCSANOW};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // PTYペアの作成
+    let pty_system = native_pty_system();
+    let mut pair = pty_system.openpty(PtySize {
+        rows: 24,
+        cols: 80,
+        pixel_width: 0,
+        pixel_height: 0,
+    })?;
+
+    // 制御端末をcbreakモードに設定
+    let stdin_fd = 0;
+    let orig_termios = tcgetattr(stdin_fd)?;
+    let mut cbreak_termios = orig_termios.clone();
+    
+    // ICANONとECHOを無効化、ISIGは維持
+    cbreak_termios.c_lflag &= !(termios::ICANON | termios::ECHO);
+    cbreak_termios.c_lflag |= termios::ISIG;  // シグナル処理を維持
+    tcsetattr(stdin_fd, TCSANOW, &cbreak_termios)?;
+
+    // 子プロセスの起動
+    let cmd = CommandBuilder::new("bash");
+    let child = pair.slave.spawn_command(cmd)?;
+
+    // I/O転送処理（後述）
+    
+    // 終了時にターミナル状態を復元
+    tcsetattr(stdin_fd, TCSANOW, &orig_termios)?;
+    Ok(())
+}
+```
+
+## リアルタイムI/O転送の実装
+
+1文字ずつのリアルタイム転送には、標準入力とPTYマスター間の双方向データフローを非同期で処理する必要があります。`nix`クレートを使った低レベル実装では、より細かな制御が可能です：
+
+```rust
+use nix::pty::openpty;
+use nix::sys::termios::*;
+use std::os::unix::io::{FromRawFd, RawFd};
+use std::io::{Read, Write};
+use std::thread;
+use std::fs::File;
+
+fn setup_io_forwarding(master_fd: RawFd) -> std::io::Result<()> {
+    let master_read = unsafe { File::from_raw_fd(master_fd) };
+    let master_write = master_read.try_clone()?;
+    
+    // 標準入力 → PTYマスター
+    let input_thread = thread::spawn(move || {
+        let mut stdin = std::io::stdin();
+        let mut buffer = [0u8; 1];
+        let mut master = master_write;
+        
+        loop {
+            if stdin.read_exact(&mut buffer).is_ok() {
+                // 手動でCtrl+Cを検出する場合（raw modeの場合）
+                if buffer[0] == 0x03 {
+                    // 子プロセスにSIGINTを送信
+                    // ただし、cbreakモードならこの処理は不要
+                }
+                if master.write_all(&buffer).is_err() {
+                    break;
+                }
+                master.flush().unwrap();
+            }
+        }
+    });
+
+    // PTYマスター → 標準出力
+    let output_thread = thread::spawn(move || {
+        let mut master = master_read;
+        let mut stdout = std::io::stdout();
+        let mut buffer = [0u8; 1024];
+        
+        loop {
+            match master.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(n) => {
+                    stdout.write_all(&buffer[..n]).unwrap();
+                    stdout.flush().unwrap();
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    input_thread.join().unwrap();
+    output_thread.join().unwrap();
+    Ok(())
+}
+```
+
+## シグナル処理の実装パターン
+
+### cbreakモードでの自動シグナル処理
+
+cbreakモードの最大の利点は、**Ctrl+Cが自動的にSIGINTを生成**することです。子プロセスは通常通りシグナルを受け取るため、追加実装は最小限で済みます：
+
+```rust
+use nix::sys::termios::*;
+
+fn setup_cbreak_mode(fd: RawFd) -> Result<Termios, nix::Error> {
+    let mut termios = tcgetattr(fd)?;
+    let original = termios.clone();
+    
+    // cbreakモード: ICANONを無効化、ISIGは有効のまま
+    termios.local_flags &= !(LocalFlags::ICANON | LocalFlags::ECHO);
+    termios.local_flags |= LocalFlags::ISIG;  // これが重要
+    
+    // 即座に文字を取得
+    termios.control_chars[SpecialCharacterIndices::VMIN as usize] = 1;
+    termios.control_chars[SpecialCharacterIndices::VTIME as usize] = 0;
+    
+    tcsetattr(fd, SetArg::TCSAFLUSH, &termios)?;
+    Ok(original)
+}
+```
+
+### raw modeでの手動シグナル検出
+
+完全なraw modeが必要な場合は、Ctrl+Cを手動で検出し、シグナルを送信する必要があります：
+
+```rust
+use signal_hook::{consts::SIGINT, iterator::Signals};
+use nix::unistd::Pid;
+use nix::sys::signal::{kill, Signal};
+
+fn handle_manual_signal_detection(child_pid: Pid) {
+    let mut buffer = [0u8; 1];
+    loop {
+        std::io::stdin().read_exact(&mut buffer).unwrap();
+        
+        match buffer[0] {
+            0x03 => {  // Ctrl+C検出
+                eprintln!("Ctrl+C detected, sending SIGINT to child");
+                let _ = kill(child_pid, Signal::SIGINT);
+            }
+            0x1C => {  // Ctrl+\検出 (SIGQUIT)
+                let _ = kill(child_pid, Signal::SIGQUIT);
+            }
+            _ => {
+                // 通常の文字処理
+            }
+        }
+    }
+}
+```
+
+### signal_hookクレートを使った高度なシグナル処理
+
+`signal_hook`クレートは、より洗練されたシグナル処理を可能にします：
+
+```rust
+use signal_hook::{consts::*, flag};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+fn setup_signal_handlers() -> Result<Arc<AtomicBool>, Box<dyn std::error::Error>> {
+    let term = Arc::new(AtomicBool::new(false));
+    
+    // 複数のシグナルに対応
+    for &sig in &[SIGINT, SIGTERM, SIGHUP] {
+        flag::register(sig, Arc::clone(&term))?;
+    }
+    
+    // Ctrl+Cの2回押しで強制終了
+    flag::register_conditional_shutdown(SIGINT, 1, Arc::clone(&term))?;
+    
+    Ok(term)
+}
+```
+
+## 実装例：完全なscriptコマンド風プログラム
+
+以下は、すべての要件を満たす完全な実装例です：
+
+```rust
+use portable_pty::{native_pty_system, PtySize, CommandBuilder, MasterPty, ChildKiller};
+use termios::{Termios, tcgetattr, tcsetattr, TCSANOW};
+use signal_hook::{consts::SIGINT, flag};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::io::{Read, Write};
+use std::thread;
+
+struct TerminalGuard {
+    original: Termios,
+    fd: i32,
+}
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        let _ = tcsetattr(self.fd, TCSANOW, &self.original);
+    }
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // シグナルハンドラの設定
+    let running = Arc::new(AtomicBool::new(true));
+    flag::register(SIGINT, Arc::clone(&running))?;
+    
+    // ターミナル状態の保存とcbreakモード設定
+    let stdin_fd = 0;
+    let original_termios = tcgetattr(stdin_fd)?;
+    let _guard = TerminalGuard { original: original_termios.clone(), fd: stdin_fd };
+    
+    let mut termios = original_termios.clone();
+    termios.c_lflag &= !(termios::ICANON | termios::ECHO);
+    termios.c_lflag |= termios::ISIG;  // シグナル処理を維持
+    termios.c_cc[termios::VMIN] = 1;
+    termios.c_cc[termios::VTIME] = 0;
+    tcsetattr(stdin_fd, TCSANOW, &termios)?;
+    
+    // PTYの作成と子プロセスの起動
+    let pty_system = native_pty_system();
+    let pair = pty_system.openpty(PtySize {
+        rows: 24,
+        cols: 80,
+        pixel_width: 0,
+        pixel_height: 0,
+    })?;
+    
+    let cmd = CommandBuilder::new("bash");
+    let mut child = pair.slave.spawn_command(cmd)?;
+    drop(pair.slave);  // スレーブ側を閉じる
+    
+    // I/O転送スレッド
+    let master_read = pair.master.try_clone_reader()?;
+    let mut master_write = pair.master.take_writer()?;
+    
+    let running_clone = Arc::clone(&running);
+    let output_thread = thread::spawn(move || {
+        let mut reader = master_read;
+        let mut stdout = std::io::stdout();
+        let mut buffer = [0u8; 4096];
+        
+        while running_clone.load(Ordering::Relaxed) {
+            match reader.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(n) => {
+                    stdout.write_all(&buffer[..n]).unwrap();
+                    stdout.flush().unwrap();
+                }
+                Err(_) => break,
+            }
+        }
+    });
+    
+    // 入力処理ループ
+    let mut stdin = std::io::stdin();
+    let mut buffer = [0u8; 1];
+    
+    while running.load(Ordering::Relaxed) {
+        match stdin.read(&mut buffer) {
+            Ok(1) => {
+                master_write.write_all(&buffer)?;
+                master_write.flush()?;
+            }
+            _ => break,
+        }
+        
+        // 子プロセスの状態確認
+        if let Ok(Some(_)) = child.try_wait() {
+            break;
+        }
+    }
+    
+    // クリーンアップ
+    running.store(false, Ordering::Relaxed);
+    let _ = child.kill();
+    output_thread.join().unwrap();
+    
+    Ok(())
+}
+```
+
+## 重要な実装上の注意点
+
+プロセスグループの管理は、シグナルの適切な伝播に不可欠です。子プロセスを新しいプロセスグループに配置することで、親プロセスとは独立したシグナル処理が可能になります。**ターミナル状態の復元は必須**で、RAIIパターン（Drop trait）を使用することで、パニック時でも確実に元の状態に戻せます。
+
+パフォーマンス面では、バッファサイズを適切に設定し（通常1024〜4096バイト）、不要なflush呼び出しを避けることが重要です。raw modeとcbreakモードの選択は、アプリケーションの要件に応じて慎重に行う必要があります。多くの場合、**cbreakモードが最適なバランス**を提供します。
+
+## まとめ
+
+RustでPTYを使ったscriptコマンド風プログラムの実装には、`portable-pty`と`termios`の組み合わせが最も実用的です。cbreakモードを使用することで、リアルタイム入力とシグナル処理を両立でき、ユーザーの期待する動作を実現できます。完全なraw modeが必要な場合は、手動でのCtrl+C検出とシグナル送信の実装が必要ですが、多くのケースではcbreakモードで十分な機能を提供できます。
