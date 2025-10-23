@@ -74,7 +74,7 @@ fn main() -> Result<()> {
             log_filter_cmd,
         } => {
             let pid = std::process::id();
-            let renlog_dir = Path::new(&renlog_dir).join(format!("{}", pid));
+            let renlog_dir = Path::new(&renlog_dir).join(format!("{pid}"));
             run_log_session(
                 &renlog_dir,
                 &args.log_level,

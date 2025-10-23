@@ -4,6 +4,7 @@ use crate::symlink_utils::create_or_update_symlink;
 use std::fs::File;
 use std::io::{Result, Write};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 const MAX_FILENAME_LENGTH: usize = 256;
 
@@ -83,12 +84,70 @@ fn update_current_log_file(log_dir: &Path, log_file_path: &str, pid: u32) -> Res
     Ok(())
 }
 
+/// Apply log filter command to the log file
+fn apply_log_filter(log_file_path: &Path, filter_cmd: &str) -> Result<()> {
+    log::info!(
+        "Applying log filter '{}' to file: {}",
+        filter_cmd,
+        log_file_path.display()
+    );
+
+    // Create a temporary file in the same directory
+    let temp_file_path = log_file_path.with_extension("log.tmp");
+
+    // Build the command: cat log_file | filter_cmd > temp_file
+    let full_command = format!(
+        "cat {} | {} > {}",
+        log_file_path.display(),
+        filter_cmd,
+        temp_file_path.display()
+    );
+
+    log::debug!("Executing filter command: {full_command}");
+
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg(&full_command)
+        .output()
+        .map_err(|e| {
+            log::error!("Failed to execute filter command: {e}");
+            std::io::Error::other(format!("Failed to execute filter command: {e}"))
+        })?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        log::error!("Filter command failed: {stderr}");
+        // Clean up temporary file if it exists
+        let _ = std::fs::remove_file(&temp_file_path);
+        return Err(std::io::Error::other(format!(
+            "Filter command failed: {stderr}"
+        )));
+    }
+
+    // Replace the original file with the filtered file
+    std::fs::rename(&temp_file_path, log_file_path).map_err(|e| {
+        log::error!("Failed to replace log file with filtered version: {e}");
+        // Try to clean up temporary file
+        let _ = std::fs::remove_file(&temp_file_path);
+        std::io::Error::other(format!(
+            "Failed to replace log file with filtered version: {e}"
+        ))
+    })?;
+
+    log::info!(
+        "Successfully applied filter to log file: {}",
+        log_file_path.display()
+    );
+    Ok(())
+}
+
 pub fn save_command_log(
     log_dir: &Path,
     command: &str,
     data: &[u8],
     exit_status: Option<i32>,
     pid: u32,
+    log_filter_cmd: Option<&str>,
 ) -> Result<String> {
     log::debug!(
         "Saving command log for '{command}', data size: {} bytes, exit status: {exit_status:?}",
@@ -162,6 +221,14 @@ pub fn save_command_log(
     // Update the current log file tracking
     if let Err(e) = update_current_log_file(log_dir, &log_file_path, pid) {
         log::warn!("Failed to update current log file tracking: {e}");
+    }
+
+    // Apply log filter if specified
+    if let Some(filter_cmd) = log_filter_cmd {
+        if let Err(e) = apply_log_filter(&filepath, filter_cmd) {
+            log::error!("Failed to apply log filter: {e}");
+            // Don't fail the entire operation, just log the error
+        }
     }
 
     Ok(log_file_path)
