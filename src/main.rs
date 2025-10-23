@@ -47,6 +47,11 @@ enum Commands {
             help = "Custom shell command to execute (e.g., 'zsh --no-globalrcs')"
         )]
         cmd: Option<String>,
+        #[arg(
+            long,
+            help = "Log filter just before save log file"
+        )]
+        log_filter_cmd: Option<String>,
     },
     /// Show bash configuration for shell integration
     ShowBashRc,
@@ -66,15 +71,15 @@ fn main() -> Result<()> {
             show_shell_rc(ShellType::Zsh);
             Ok(())
         }
-        Commands::Log { renlog_dir, cmd } => {
+        Commands::Log { renlog_dir, cmd, log_filter_cmd } => {
             let pid = std::process::id();
             let renlog_dir = Path::new(&renlog_dir).join(format!("{}", pid));
-            run_log_session(&renlog_dir, &args.log_level, cmd.as_deref())
+            run_log_session(&renlog_dir, &args.log_level, cmd.as_deref(), log_filter_cmd.as_deref())
         }
     }
 }
 
-fn run_log_session(renlog_dir: &Path, log_level: &str, custom_cmd: Option<&str>) -> Result<()> {
+fn run_log_session(renlog_dir: &Path, log_level: &str, custom_cmd: Option<&str>, _log_filter_cmd: Option<&str>) -> Result<()> {
     let timestamp = Utc::now().format("%Y%m%d_%H%M%S_%3f").to_string();
     let log_filename = format!("renlog_{timestamp}.log");
     let log_file_path = Path::new(renlog_dir).join(&log_filename);
