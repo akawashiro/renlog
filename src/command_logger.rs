@@ -89,6 +89,7 @@ pub fn save_command_log(
     data: &[u8],
     exit_status: Option<i32>,
     pid: u32,
+    log_filter_cmd: Option<&str>,
 ) -> Result<String> {
     log::debug!(
         "Saving command log for '{command}', data size: {} bytes, exit status: {exit_status:?}",
