@@ -69,6 +69,7 @@ pub fn forward_pty_to_stdout_with_logging(
     mut stdout: File,
     log_dir: &Path,
     pid: u32,
+    log_filter_cmd: Option<&str>,
 ) -> Result<()> {
     log::debug!("Starting PTY to stdout forwarding with command detection and logging");
     let mut buffer = [0u8; BUFFER_SIZE];
@@ -100,6 +101,7 @@ pub fn forward_pty_to_stdout_with_logging(
                             &command_buffer,
                             None,
                             pid,
+                            log_filter_cmd,
                         ) {
                             Ok(log_file_path) => {
                                 log::info!("Saved incomplete command log to: {log_file_path}");
@@ -161,6 +163,7 @@ pub fn forward_pty_to_stdout_with_logging(
                                 &command_buffer,
                                 None,
                                 pid,
+                                log_filter_cmd,
                             ) {
                                 Ok(log_file_path) => {
                                     log::info!("Saved previous command log to: {log_file_path}");
@@ -213,6 +216,7 @@ pub fn forward_pty_to_stdout_with_logging(
                                 &command_buffer,
                                 exit_status,
                                 pid,
+                                log_filter_cmd,
                             ) {
                                 Ok(log_file_path) => {
                                     log::info!("Saved command log to: {log_file_path}");

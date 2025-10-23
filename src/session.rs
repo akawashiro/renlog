@@ -26,6 +26,7 @@ pub struct Session {
     shutdown_flag: Arc<Mutex<bool>>,
     custom_cmd: Option<String>,
     command_name: Arc<Mutex<String>>,
+    log_filter_cmd: Option<String>,
 }
 
 fn validate_fd(fd: RawFd, name: &str) -> Result<()> {
@@ -81,11 +82,15 @@ fn ensure_fd_ready(fd: RawFd, name: &str) -> Result<()> {
 }
 
 impl Session {
-    pub fn new(renlog_dir: &Path, custom_cmd: Option<&str>) -> Result<Self> {
+    pub fn new(
+        renlog_dir: &Path,
+        custom_cmd: Option<&str>,
+        log_filter_cmd: Option<&str>,
+    ) -> Result<Self> {
         log::debug!("Creating new Session instance");
         let pid = std::process::id();
         log::info!(
-            "Session initializing with PID={pid} renlog_dir={renlog_dir:?} custom_cmd={custom_cmd:?}"
+            "Session initializing with PID={pid} renlog_dir={renlog_dir:?} custom_cmd={custom_cmd:?} log_filter_cmd={log_filter_cmd:?}"
         );
 
         // Create the log directory if it doesn't exist
@@ -126,6 +131,7 @@ impl Session {
             shutdown_flag: Arc::new(Mutex::new(false)),
             custom_cmd: custom_cmd.map(|s| s.to_string()),
             command_name: Arc::new(Mutex::new(String::new())),
+            log_filter_cmd: log_filter_cmd.map(|s| s.to_string()),
         })
     }
 
@@ -169,7 +175,7 @@ impl Session {
         cmd.env("RENLOG_PID", self.pid.to_string());
 
         let mut last_log_file = self.renlog_dir.clone().into_os_string();
-        last_log_file.push(format!("/{}", LAST_LOG_FILE));
+        last_log_file.push(format!("/{LAST_LOG_FILE}"));
         cmd.env("RENLOG_LAST_LOG_FILE", &last_log_file);
 
         // Set up stdio to use the PTY slave (duplicate fd for each stdio stream)
@@ -343,6 +349,7 @@ impl Session {
         // Clone necessary data for the output thread
         let renlog_dir_for_output = self.renlog_dir.clone();
         let pid_for_output = self.pid;
+        let log_filter_cmd_for_output = self.log_filter_cmd.clone();
 
         // Forward stdin to PTY master
         log::debug!("Starting stdin->master forwarder thread");
@@ -364,6 +371,7 @@ impl Session {
                 stdout,
                 &renlog_dir_for_output,
                 pid_for_output,
+                log_filter_cmd_for_output.as_deref(),
             ) {
                 log::error!("Error in PTY to stdout forwarder: {e}");
                 eprintln!("Error in unified PTY reader: {e}");

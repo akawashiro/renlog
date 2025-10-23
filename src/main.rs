@@ -47,6 +47,8 @@ enum Commands {
             help = "Custom shell command to execute (e.g., 'zsh --no-globalrcs')"
         )]
         cmd: Option<String>,
+        #[arg(long, help = "Log filter just before save log file")]
+        log_filter_cmd: Option<String>,
     },
     /// Show bash configuration for shell integration
     ShowBashRc,
@@ -66,15 +68,29 @@ fn main() -> Result<()> {
             show_shell_rc(ShellType::Zsh);
             Ok(())
         }
-        Commands::Log { renlog_dir, cmd } => {
+        Commands::Log {
+            renlog_dir,
+            cmd,
+            log_filter_cmd,
+        } => {
             let pid = std::process::id();
-            let renlog_dir = Path::new(&renlog_dir).join(format!("{}", pid));
-            run_log_session(&renlog_dir, &args.log_level, cmd.as_deref())
+            let renlog_dir = Path::new(&renlog_dir).join(format!("{pid}"));
+            run_log_session(
+                &renlog_dir,
+                &args.log_level,
+                cmd.as_deref(),
+                log_filter_cmd.as_deref(),
+            )
         }
     }
 }
 
-fn run_log_session(renlog_dir: &Path, log_level: &str, custom_cmd: Option<&str>) -> Result<()> {
+fn run_log_session(
+    renlog_dir: &Path,
+    log_level: &str,
+    custom_cmd: Option<&str>,
+    log_filter_cmd: Option<&str>,
+) -> Result<()> {
     let timestamp = Utc::now().format("%Y%m%d_%H%M%S_%3f").to_string();
     let log_filename = format!("renlog_{timestamp}.log");
     let log_file_path = Path::new(renlog_dir).join(&log_filename);
@@ -95,7 +111,7 @@ fn run_log_session(renlog_dir: &Path, log_level: &str, custom_cmd: Option<&str>)
 
     log::info!("Starting renlog...");
     println!("Starting renlog...");
-    let result = run_renlog_session(renlog_dir, custom_cmd);
+    let result = run_renlog_session(renlog_dir, custom_cmd, log_filter_cmd);
 
     match result {
         Ok(exit_code) => {
@@ -111,11 +127,14 @@ fn run_log_session(renlog_dir: &Path, log_level: &str, custom_cmd: Option<&str>)
     }
 }
 
-fn run_renlog_session(renlog_dir: &Path, custom_cmd: Option<&str>) -> Result<i32> {
-    let mut session = Session::new(renlog_dir, custom_cmd)?;
-
+// TODO: Do we need split run_log_session and run_renlog_session?
+fn run_renlog_session(
+    renlog_dir: &Path,
+    custom_cmd: Option<&str>,
+    log_filter_cmd: Option<&str>,
+) -> Result<i32> {
+    let mut session = Session::new(renlog_dir, custom_cmd, log_filter_cmd)?;
     session.start_child()?;
-
     session.start_forwarders()?;
 
     // Set up signal handling with all signals
