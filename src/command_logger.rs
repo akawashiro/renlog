@@ -97,7 +97,7 @@ fn apply_log_filter(log_file_path: &Path, filter_cmd: &str) -> Result<()> {
 
     // Build the command: cat log_file | filter_cmd > temp_file
     let full_command = format!(
-        "cat {} | {} > {}",
+        "cat '{}' | {} > '{}'",
         log_file_path.display(),
         filter_cmd,
         temp_file_path.display()
@@ -105,22 +105,34 @@ fn apply_log_filter(log_file_path: &Path, filter_cmd: &str) -> Result<()> {
 
     log::debug!("Executing filter command: {full_command}");
 
-    let output = Command::new("sh")
+    let status = Command::new("sh")
         .arg("-c")
         .arg(&full_command)
-        .output()
+        .status()
         .map_err(|e| {
             log::error!("Failed to execute filter command: {e}");
             std::io::Error::other(format!("Failed to execute filter command: {e}"))
         })?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        log::error!("Filter command failed: {stderr}");
+    if !status.success() {
+        log::error!("Filter command failed with exit code: {:?}", status.code());
         // Clean up temporary file if it exists
         let _ = std::fs::remove_file(&temp_file_path);
         return Err(std::io::Error::other(format!(
-            "Filter command failed: {stderr}"
+            "Filter command failed with exit code: {:?}",
+            status.code()
+        )));
+    }
+
+    // Check if temp file was created
+    if !temp_file_path.exists() {
+        log::error!(
+            "Temporary file was not created: {}",
+            temp_file_path.display()
+        );
+        return Err(std::io::Error::other(format!(
+            "Temporary file was not created: {}",
+            temp_file_path.display()
         )));
     }
 
@@ -322,5 +334,169 @@ mod tests {
         assert!(filename.len() <= MAX_FILENAME_LENGTH);
         assert!(filename.starts_with(timestamp));
         assert!(filename.ends_with(".log"));
+    }
+
+    #[test]
+    fn test_apply_log_filter_with_grep() {
+        use std::io::Write;
+
+        // Create a temporary directory with unique name
+        let temp_dir = std::env::temp_dir().join(format!(
+            "renlog_test_grep_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        // Create a test log file
+        let log_file = temp_dir.join("test.log");
+        let mut file = File::create(&log_file).unwrap();
+        writeln!(file, "KEEP_THIS line 1").unwrap();
+        writeln!(file, "REMOVE_THIS line").unwrap();
+        writeln!(file, "KEEP_THIS line 2").unwrap();
+        file.flush().unwrap();
+        drop(file);
+
+        // Apply grep filter
+        let result = apply_log_filter(&log_file, "grep KEEP_THIS");
+        assert!(result.is_ok(), "Filter should succeed: {:?}", result.err());
+
+        // Read the filtered content
+        let content = std::fs::read_to_string(&log_file).unwrap();
+
+        // Check that KEEP_THIS lines are present
+        assert!(content.contains("KEEP_THIS line 1"));
+        assert!(content.contains("KEEP_THIS line 2"));
+
+        // Check that REMOVE_THIS line is NOT present
+        assert!(!content.contains("REMOVE_THIS"));
+
+        // Clean up
+        std::fs::remove_dir_all(&temp_dir).unwrap();
+    }
+
+    #[test]
+    fn test_apply_log_filter_with_sed() {
+        use std::io::Write;
+
+        // Create a temporary directory with unique name
+        let temp_dir = std::env::temp_dir().join(format!(
+            "renlog_test_sed_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        // Create a test log file
+        let log_file = temp_dir.join("test_sed.log");
+        let mut file = File::create(&log_file).unwrap();
+        writeln!(file, "REPLACE_ME first").unwrap();
+        writeln!(file, "REPLACE_ME second").unwrap();
+        file.flush().unwrap();
+        drop(file);
+
+        // Apply sed filter
+        let result = apply_log_filter(&log_file, "sed 's/REPLACE_ME/REPLACED/g'");
+        assert!(result.is_ok(), "Filter should succeed: {:?}", result.err());
+
+        // Read the filtered content
+        let content = std::fs::read_to_string(&log_file).unwrap();
+
+        // Check that text was replaced
+        assert!(content.contains("REPLACED first"));
+        assert!(content.contains("REPLACED second"));
+
+        // Check that original text is NOT present
+        assert!(!content.contains("REPLACE_ME"));
+
+        // Clean up
+        std::fs::remove_dir_all(&temp_dir).unwrap();
+    }
+
+    #[test]
+    fn test_apply_log_filter_invalid_command() {
+        use std::io::Write;
+
+        // Create a temporary directory with unique name
+        let temp_dir = std::env::temp_dir().join(format!(
+            "renlog_test_invalid_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        // Create a test log file
+        let log_file = temp_dir.join("test_invalid.log");
+        let mut file = File::create(&log_file).unwrap();
+        writeln!(file, "test content").unwrap();
+        file.flush().unwrap();
+        drop(file);
+
+        // Get the original content
+        let original_content = std::fs::read_to_string(&log_file).unwrap();
+
+        // Apply invalid filter command
+        let result = apply_log_filter(&log_file, "nonexistent_command_xyz");
+        assert!(result.is_err(), "Filter should fail with invalid command");
+
+        // Verify original file still exists and has original content
+        let content = std::fs::read_to_string(&log_file).unwrap();
+        assert_eq!(
+            content, original_content,
+            "Original file should be unchanged"
+        );
+
+        // Clean up
+        std::fs::remove_dir_all(&temp_dir).unwrap();
+    }
+
+    #[test]
+    fn test_apply_log_filter_pipeline() {
+        use std::io::Write;
+
+        // Create a temporary directory with unique name
+        let temp_dir = std::env::temp_dir().join(format!(
+            "renlog_test_pipeline_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        // Create a test log file
+        let log_file = temp_dir.join("test_pipeline.log");
+        let mut file = File::create(&log_file).unwrap();
+        writeln!(file, "KEEP_THIS first").unwrap();
+        writeln!(file, "REMOVE_THIS line").unwrap();
+        writeln!(file, "KEEP_THIS second").unwrap();
+        file.flush().unwrap();
+        drop(file);
+
+        // Apply pipeline filter: grep then sed
+        let result = apply_log_filter(&log_file, "grep KEEP_THIS | sed 's/KEEP_THIS/KEPT/g'");
+        assert!(result.is_ok(), "Filter should succeed: {:?}", result.err());
+
+        // Read the filtered content
+        let content = std::fs::read_to_string(&log_file).unwrap();
+
+        // Check that text was both filtered and replaced
+        assert!(content.contains("KEPT first"));
+        assert!(content.contains("KEPT second"));
+        assert!(!content.contains("KEEP_THIS"));
+        assert!(!content.contains("REMOVE_THIS"));
+
+        // Clean up
+        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 }
