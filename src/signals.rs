@@ -14,7 +14,6 @@ pub struct SessionCallbacks {
     pub child: Arc<Mutex<Option<Child>>>,
     pub exit_status: Arc<Mutex<Option<i32>>>,
     pub shutdown_flag: Arc<Mutex<bool>>,
-    pub command_name: Arc<Mutex<String>>,
 }
 
 pub struct SignalHandler {
@@ -357,11 +356,7 @@ impl SignalHandler {
             match child.try_wait() {
                 Ok(Some(status)) => {
                     let exit_code = status.code().unwrap_or(-1);
-                    let cmd_name_guard = callbacks.command_name.lock().unwrap();
-                    let command_name = cmd_name_guard.clone();
-                    drop(cmd_name_guard);
-
-                    log::info!("Child process '{command_name}' exited with status: {exit_code}");
+                    log::info!("Child process exited with status: {exit_code}");
 
                     let mut exit_status_guard = callbacks.exit_status.lock().unwrap();
                     *exit_status_guard = Some(exit_code);
