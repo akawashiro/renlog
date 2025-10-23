@@ -17,7 +17,7 @@ tmux send-keys -t ${session_name} "echo 'Hello'" C-m
 sleep 3
 tmux kill-session -t ${session_name}
 
-renlog_latest_log=$(realpath ${renlog_dir}/latest.log)
+renlog_latest_log=$(find ${renlog_dir} -name latest.log | head -1)
 if [[ ! -f "${renlog_latest_log}" ]]; then
     echo "Log file not found: ${renlog_latest_log}"
     exit 1
