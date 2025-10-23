@@ -25,7 +25,6 @@ pub struct Session {
     exit_status: Arc<Mutex<Option<i32>>>,
     shutdown_flag: Arc<Mutex<bool>>,
     custom_cmd: Option<String>,
-    command_name: Arc<Mutex<String>>,
     log_filter_cmd: Option<String>,
 }
 
@@ -130,7 +129,6 @@ impl Session {
             exit_status: Arc::new(Mutex::new(None)),
             shutdown_flag: Arc::new(Mutex::new(false)),
             custom_cmd: custom_cmd.map(|s| s.to_string()),
-            command_name: Arc::new(Mutex::new(String::new())),
             log_filter_cmd: log_filter_cmd.map(|s| s.to_string()),
         })
     }
@@ -142,7 +140,7 @@ impl Session {
         self.pty.validate_readiness()?;
         log::debug!("PTY validated and ready for child process");
 
-        let (mut cmd, command_name) = if let Some(custom_cmd) = &self.custom_cmd {
+        let mut cmd = if let Some(custom_cmd) = &self.custom_cmd {
             // Parse the custom command
             let parts: Vec<&str> = custom_cmd.split_whitespace().collect();
             if parts.is_empty() {
@@ -154,7 +152,7 @@ impl Session {
             for arg in &parts[1..] {
                 cmd.arg(arg);
             }
-            (cmd, custom_cmd.clone())
+            cmd
         } else {
             // Use default shell from environment
             let shell = env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
@@ -163,14 +161,8 @@ impl Session {
             let mut cmd = Command::new("/bin/sh");
             cmd.arg("-c");
             cmd.arg(&shell);
-            (cmd, shell)
+            cmd
         };
-
-        // Store the command name for later use
-        {
-            let mut cmd_name_guard = self.command_name.lock().unwrap();
-            *cmd_name_guard = command_name;
-        }
 
         cmd.env("RENLOG_PID", self.pid.to_string());
 
@@ -418,7 +410,6 @@ impl Session {
             child: self.child.clone(),
             exit_status: self.exit_status.clone(),
             shutdown_flag: self.shutdown_flag.clone(),
-            command_name: self.command_name.clone(),
         }
     }
 }
