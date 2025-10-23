@@ -24,7 +24,7 @@ pub struct Session {
     renlog_dir: PathBuf,
     exit_status: Arc<Mutex<Option<i32>>>,
     shutdown_flag: Arc<Mutex<bool>>,
-    custom_cmd: Option<String>,
+    user_specified_shell_cmd: Option<String>,
     log_filter_cmd: Option<String>,
 }
 
@@ -83,13 +83,13 @@ fn ensure_fd_ready(fd: RawFd, name: &str) -> Result<()> {
 impl Session {
     pub fn new(
         renlog_dir: &Path,
-        custom_cmd: Option<&str>,
+        user_specified_shell_cmd: Option<&str>,
         log_filter_cmd: Option<&str>,
     ) -> Result<Self> {
         log::debug!("Creating new Session instance");
         let pid = std::process::id();
         log::info!(
-            "Session initializing with PID={pid} renlog_dir={renlog_dir:?} custom_cmd={custom_cmd:?} log_filter_cmd={log_filter_cmd:?}"
+            "Session initializing with PID={pid} renlog_dir={renlog_dir:?} user_specified_shell_cmd={user_specified_shell_cmd:?} log_filter_cmd={log_filter_cmd:?}"
         );
 
         // Create the log directory if it doesn't exist
@@ -128,7 +128,7 @@ impl Session {
             renlog_dir: renlog_dir.to_path_buf(),
             exit_status: Arc::new(Mutex::new(None)),
             shutdown_flag: Arc::new(Mutex::new(false)),
-            custom_cmd: custom_cmd.map(|s| s.to_string()),
+            user_specified_shell_cmd: user_specified_shell_cmd.map(|s| s.to_string()),
             log_filter_cmd: log_filter_cmd.map(|s| s.to_string()),
         })
     }
@@ -140,14 +140,14 @@ impl Session {
         self.pty.validate_readiness()?;
         log::debug!("PTY validated and ready for child process");
 
-        let mut cmd = if let Some(custom_cmd) = &self.custom_cmd {
+        let mut cmd = if let Some(user_specified_shell_cmd) = &self.user_specified_shell_cmd {
             // Parse the custom command
-            let parts: Vec<&str> = custom_cmd.split_whitespace().collect();
+            let parts: Vec<&str> = user_specified_shell_cmd.split_whitespace().collect();
             if parts.is_empty() {
                 return Err(io::Error::other("Empty custom command provided"));
             }
 
-            log::info!("Using custom command: {custom_cmd}");
+            log::info!("Using custom command: {user_specified_shell_cmd}");
             let mut cmd = Command::new(parts[0]);
             for arg in &parts[1..] {
                 cmd.arg(arg);

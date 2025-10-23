@@ -88,7 +88,7 @@ fn main() -> Result<()> {
 fn setup_logging_and_run_session(
     renlog_dir: &Path,
     log_level: &str,
-    custom_cmd: Option<&str>,
+    user_specified_shell_cmd: Option<&str>,
     log_filter_cmd: Option<&str>,
 ) -> Result<()> {
     let timestamp = Utc::now().format("%Y%m%d_%H%M%S_%3f").to_string();
@@ -111,7 +111,7 @@ fn setup_logging_and_run_session(
 
     log::info!("Starting renlog...");
     println!("Starting renlog...");
-    let result = run_pty_session(renlog_dir, custom_cmd, log_filter_cmd);
+    let result = run_pty_session(renlog_dir, user_specified_shell_cmd, log_filter_cmd);
 
     match result {
         Ok(exit_code) => {
@@ -129,10 +129,10 @@ fn setup_logging_and_run_session(
 
 fn run_pty_session(
     renlog_dir: &Path,
-    custom_cmd: Option<&str>,
+    user_specified_shell_cmd: Option<&str>,
     log_filter_cmd: Option<&str>,
 ) -> Result<i32> {
-    let mut session = Session::new(renlog_dir, custom_cmd, log_filter_cmd)?;
+    let mut session = Session::new(renlog_dir, user_specified_shell_cmd, log_filter_cmd)?;
     session.start_child()?;
     session.start_forwarders()?;
 
