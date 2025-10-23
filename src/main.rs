@@ -75,7 +75,7 @@ fn main() -> Result<()> {
         } => {
             let pid = std::process::id();
             let renlog_dir = Path::new(&renlog_dir).join(format!("{pid}"));
-            run_log_session(
+            setup_logging_and_run_session(
                 &renlog_dir,
                 &args.log_level,
                 cmd.as_deref(),
@@ -85,7 +85,7 @@ fn main() -> Result<()> {
     }
 }
 
-fn run_log_session(
+fn setup_logging_and_run_session(
     renlog_dir: &Path,
     log_level: &str,
     custom_cmd: Option<&str>,
@@ -111,7 +111,7 @@ fn run_log_session(
 
     log::info!("Starting renlog...");
     println!("Starting renlog...");
-    let result = run_renlog_session(renlog_dir, custom_cmd, log_filter_cmd);
+    let result = run_pty_session(renlog_dir, custom_cmd, log_filter_cmd);
 
     match result {
         Ok(exit_code) => {
@@ -127,8 +127,7 @@ fn run_log_session(
     }
 }
 
-// TODO: Do we need split run_log_session and run_renlog_session?
-fn run_renlog_session(
+fn run_pty_session(
     renlog_dir: &Path,
     custom_cmd: Option<&str>,
     log_filter_cmd: Option<&str>,
