@@ -81,11 +81,15 @@ fn ensure_fd_ready(fd: RawFd, name: &str) -> Result<()> {
 }
 
 impl Session {
-    pub fn new(renlog_dir: &Path, custom_cmd: Option<&str>) -> Result<Self> {
+    pub fn new(
+        renlog_dir: &Path,
+        custom_cmd: Option<&str>,
+        log_filter_cmd: Option<&str>,
+    ) -> Result<Self> {
         log::debug!("Creating new Session instance");
         let pid = std::process::id();
         log::info!(
-            "Session initializing with PID={pid} renlog_dir={renlog_dir:?} custom_cmd={custom_cmd:?}"
+            "Session initializing with PID={pid} renlog_dir={renlog_dir:?} custom_cmd={custom_cmd:?} log_filter_cmd={log_filter_cmd:?}"
         );
 
         // Create the log directory if it doesn't exist
