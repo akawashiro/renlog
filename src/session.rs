@@ -133,7 +133,7 @@ impl Session {
         })
     }
 
-    pub fn start_child(&mut self) -> Result<()> {
+    pub fn start_child(&self) -> Result<()> {
         log::debug!("Starting child process");
 
         // Validate PTY readiness before proceeding
@@ -375,7 +375,7 @@ impl Session {
         Ok(())
     }
 
-    pub fn wait_for_child(&mut self) -> Result<i32> {
+    pub fn wait_for_child(&self) -> Result<i32> {
         log::debug!("Waiting for child process to exit");
 
         // Wait for shutdown flag to be set by signal handler

@@ -132,7 +132,7 @@ fn run_pty_session(
     user_specified_shell_cmd: Option<&str>,
     log_filter_cmd: Option<&str>,
 ) -> Result<i32> {
-    let mut session = Session::new(renlog_dir, user_specified_shell_cmd, log_filter_cmd)?;
+    let session = Session::new(renlog_dir, user_specified_shell_cmd, log_filter_cmd)?;
     session.start_child()?;
     session.start_forwarders()?;
 
