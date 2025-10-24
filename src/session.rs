@@ -136,7 +136,7 @@ impl Session {
         })
     }
 
-    pub fn start_child(
+    fn start_child(
         pty: &PtyPair,
         user_specified_shell_cmd: Option<&str>,
         pid: u32,
