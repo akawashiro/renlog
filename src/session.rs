@@ -133,14 +133,14 @@ impl Session {
         })
     }
 
-    pub fn start_child(&self) -> Result<()> {
+    pub fn start_child(session: &Session) -> Result<()> {
         log::debug!("Starting child process");
 
         // Validate PTY readiness before proceeding
-        self.pty.validate_readiness()?;
+        session.pty.validate_readiness()?;
         log::debug!("PTY validated and ready for child process");
 
-        let mut cmd = if let Some(user_specified_shell_cmd) = &self.user_specified_shell_cmd {
+        let mut cmd = if let Some(user_specified_shell_cmd) = &session.user_specified_shell_cmd {
             // Parse the custom command
             let parts: Vec<&str> = user_specified_shell_cmd.split_whitespace().collect();
             if parts.is_empty() {
@@ -164,14 +164,14 @@ impl Session {
             cmd
         };
 
-        cmd.env("RENLOG_PID", self.pid.to_string());
+        cmd.env("RENLOG_PID", session.pid.to_string());
 
-        let mut last_log_file = self.renlog_dir.clone().into_os_string();
+        let mut last_log_file = session.renlog_dir.clone().into_os_string();
         last_log_file.push(format!("/{LAST_LOG_FILE}"));
         cmd.env("RENLOG_LAST_LOG_FILE", &last_log_file);
 
         // Set up stdio to use the PTY slave (duplicate fd for each stdio stream)
-        let slave_fd = self.pty.slave_fd();
+        let slave_fd = session.pty.slave_fd();
 
         // Validate the slave FD before duplicating
         validate_fd(slave_fd, "PTY slave")?;
@@ -275,19 +275,19 @@ impl Session {
         let child_pid = child.id();
 
         // Store child in Arc<Mutex<>>
-        let mut child_guard = self.child.lock().unwrap();
+        let mut child_guard = session.child.lock().unwrap();
         *child_guard = Some(child);
 
         log::info!("Child process started with PID: {child_pid}");
         Ok(())
     }
 
-    pub fn start_forwarders(&self) -> Result<()> {
+    pub fn start_forwarders(session: &Session) -> Result<()> {
         log::debug!("Starting I/O forwarders");
         // Get raw file descriptors
         let stdin_fd = libc::STDIN_FILENO;
         let stdout_fd = libc::STDOUT_FILENO;
-        let master_fd = self.pty.master_fd();
+        let master_fd = session.pty.master_fd();
 
         log::debug!(
             "File descriptors - stdin: {stdin_fd}, stdout: {stdout_fd}, master: {master_fd}"
@@ -339,9 +339,9 @@ impl Session {
         let master_for_output = unsafe { File::from_raw_fd(master_dup2) };
 
         // Clone necessary data for the output thread
-        let renlog_dir_for_output = self.renlog_dir.clone();
-        let pid_for_output = self.pid;
-        let log_filter_cmd_for_output = self.log_filter_cmd.clone();
+        let renlog_dir_for_output = session.renlog_dir.clone();
+        let pid_for_output = session.pid;
+        let log_filter_cmd_for_output = session.log_filter_cmd.clone();
 
         // Forward stdin to PTY master
         log::debug!("Starting stdin->master forwarder thread");
@@ -375,12 +375,12 @@ impl Session {
         Ok(())
     }
 
-    pub fn wait_for_child(&self) -> Result<i32> {
+    pub fn wait_for_child(session: &Session) -> Result<i32> {
         log::debug!("Waiting for child process to exit");
 
         // Wait for shutdown flag to be set by signal handler
         loop {
-            let shutdown_guard = self.shutdown_flag.lock().unwrap();
+            let shutdown_guard = session.shutdown_flag.lock().unwrap();
             if *shutdown_guard {
                 drop(shutdown_guard);
                 break;
@@ -392,7 +392,7 @@ impl Session {
         }
 
         // Get the exit status set by the signal handler
-        let exit_status_guard = self.exit_status.lock().unwrap();
+        let exit_status_guard = session.exit_status.lock().unwrap();
         let exit_code = exit_status_guard.unwrap_or(0);
         drop(exit_status_guard);
 
@@ -401,15 +401,15 @@ impl Session {
         Ok(exit_code)
     }
 
-    pub fn get_master_fd(&self) -> RawFd {
-        self.pty.master_fd()
+    pub fn get_master_fd(session: &Session) -> RawFd {
+        session.pty.master_fd()
     }
 
-    pub fn get_session_callbacks(&self) -> crate::signals::SessionCallbacks {
+    pub fn get_session_callbacks(session: &Session) -> crate::signals::SessionCallbacks {
         crate::signals::SessionCallbacks {
-            child: self.child.clone(),
-            exit_status: self.exit_status.clone(),
-            shutdown_flag: self.shutdown_flag.clone(),
+            child: session.child.clone(),
+            exit_status: session.exit_status.clone(),
+            shutdown_flag: session.shutdown_flag.clone(),
         }
     }
 }
