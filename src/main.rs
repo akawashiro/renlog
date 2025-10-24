@@ -133,18 +133,17 @@ fn run_pty_session(
     log_filter_cmd: Option<&str>,
 ) -> Result<i32> {
     let session = Session::new(renlog_dir, user_specified_shell_cmd, log_filter_cmd)?;
-    session.start_child()?;
-    session.start_forwarders()?;
+    Session::start_forwarders(&session)?;
 
     // Set up signal handling with all signals
-    let master_fd = Arc::new(Mutex::new(Some(session.get_master_fd())));
-    let session_callbacks = session.get_session_callbacks();
+    let master_fd = Arc::new(Mutex::new(Some(Session::get_master_fd(&session))));
+    let session_callbacks = Session::get_session_callbacks(&session);
     let signal_handler = SignalHandler::new()?;
 
     // Spawn signal handler thread
     let signal_thread = signal_handler.start_handler_thread(master_fd.clone(), session_callbacks);
 
-    let exit_code = session.wait_for_child()?;
+    let exit_code = Session::wait_for_child(&session)?;
 
     // Clear the master fd to stop signal handling
     {
