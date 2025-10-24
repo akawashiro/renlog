@@ -24,7 +24,6 @@ pub struct Session {
     renlog_dir: PathBuf,
     exit_status: Arc<Mutex<Option<i32>>>,
     shutdown_flag: Arc<Mutex<bool>>,
-    user_specified_shell_cmd: Option<String>,
     log_filter_cmd: Option<String>,
 }
 
@@ -119,28 +118,38 @@ impl Session {
             log::info!("Terminal set to cbreak mode successfully");
         }
 
+        let child_arc = Arc::new(Mutex::new(None));
+
+        // Start child process
+        Self::start_child(&pty, user_specified_shell_cmd, pid, renlog_dir, &child_arc)?;
+
         log::info!("Session instance created successfully");
         Ok(Session {
             pty,
-            child: Arc::new(Mutex::new(None)),
+            child: child_arc,
             original_termios,
             pid,
             renlog_dir: renlog_dir.to_path_buf(),
             exit_status: Arc::new(Mutex::new(None)),
             shutdown_flag: Arc::new(Mutex::new(false)),
-            user_specified_shell_cmd: user_specified_shell_cmd.map(|s| s.to_string()),
             log_filter_cmd: log_filter_cmd.map(|s| s.to_string()),
         })
     }
 
-    pub fn start_child(session: &Session) -> Result<()> {
+    pub fn start_child(
+        pty: &PtyPair,
+        user_specified_shell_cmd: Option<&str>,
+        pid: u32,
+        renlog_dir: &Path,
+        child: &Arc<Mutex<Option<Child>>>,
+    ) -> Result<()> {
         log::debug!("Starting child process");
 
         // Validate PTY readiness before proceeding
-        session.pty.validate_readiness()?;
+        pty.validate_readiness()?;
         log::debug!("PTY validated and ready for child process");
 
-        let mut cmd = if let Some(user_specified_shell_cmd) = &session.user_specified_shell_cmd {
+        let mut cmd = if let Some(user_specified_shell_cmd) = user_specified_shell_cmd {
             // Parse the custom command
             let parts: Vec<&str> = user_specified_shell_cmd.split_whitespace().collect();
             if parts.is_empty() {
@@ -164,14 +173,14 @@ impl Session {
             cmd
         };
 
-        cmd.env("RENLOG_PID", session.pid.to_string());
+        cmd.env("RENLOG_PID", pid.to_string());
 
-        let mut last_log_file = session.renlog_dir.clone().into_os_string();
+        let mut last_log_file = renlog_dir.to_path_buf().into_os_string();
         last_log_file.push(format!("/{LAST_LOG_FILE}"));
         cmd.env("RENLOG_LAST_LOG_FILE", &last_log_file);
 
         // Set up stdio to use the PTY slave (duplicate fd for each stdio stream)
-        let slave_fd = session.pty.slave_fd();
+        let slave_fd = pty.slave_fd();
 
         // Validate the slave FD before duplicating
         validate_fd(slave_fd, "PTY slave")?;
@@ -268,15 +277,15 @@ impl Session {
             "Configured child stdio to use duplicated PTY slave fds: stdin={stdin_fd}, stdout={stdout_fd}, stderr={stderr_fd}"
         );
 
-        let child = cmd.spawn().map_err(|e| {
+        let spawned_child = cmd.spawn().map_err(|e| {
             log::error!("Failed to spawn child process: {e}");
             e
         })?;
-        let child_pid = child.id();
+        let child_pid = spawned_child.id();
 
         // Store child in Arc<Mutex<>>
-        let mut child_guard = session.child.lock().unwrap();
-        *child_guard = Some(child);
+        let mut child_guard = child.lock().unwrap();
+        *child_guard = Some(spawned_child);
 
         log::info!("Child process started with PID: {child_pid}");
         Ok(())

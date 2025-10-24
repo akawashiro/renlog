@@ -133,7 +133,6 @@ fn run_pty_session(
     log_filter_cmd: Option<&str>,
 ) -> Result<i32> {
     let session = Session::new(renlog_dir, user_specified_shell_cmd, log_filter_cmd)?;
-    Session::start_child(&session)?;
     Session::start_forwarders(&session)?;
 
     // Set up signal handling with all signals
