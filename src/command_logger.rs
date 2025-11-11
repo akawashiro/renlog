@@ -6,7 +6,7 @@ use std::io::{Result, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const MAX_FILENAME_LENGTH: usize = 256;
+const MAX_FILENAME_LENGTH: usize = 128;
 
 fn sanitize_for_filename(command: &str) -> String {
     // Replace problematic characters with safe alternatives
