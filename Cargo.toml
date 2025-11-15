@@ -2,6 +2,8 @@
 name = "renlog"
 version = "0.1.0"
 edition = "2021"
+authors = ["Akira Kawata"]
+license = "MIT"
 
 [lints.rust]
 warnings = "deny"
