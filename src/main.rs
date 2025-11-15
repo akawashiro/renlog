@@ -112,6 +112,7 @@ fn setup_logging_and_run_session(
     log::info!("Starting renlog...");
     println!("Starting renlog...");
     let result = run_pty_session(renlog_dir, user_specified_shell_cmd, log_filter_cmd);
+    log::info!("PTY session ended with result: {result:?}");
 
     match result {
         Ok(exit_code) => {
@@ -137,25 +138,28 @@ fn run_pty_session(
 
     // Set up signal handling with all signals
     let master_fd = Arc::new(Mutex::new(Some(Session::get_master_fd(&session))));
-    let session_callbacks = Session::get_session_callbacks(&session);
+    let session_state = Session::get_session_state(&session);
     let signal_handler = SignalHandler::new()?;
 
     // Spawn signal handler thread
-    let signal_thread = signal_handler.start_handler_thread(master_fd.clone(), session_callbacks);
+    let signal_thread = signal_handler.start_handler_thread(master_fd.clone(), session_state);
 
     let exit_code = Session::wait_for_child(&session)?;
+    log::info!("Child process exited with code: {exit_code}");
 
     // Clear the master fd to stop signal handling
     {
+        log::info!("Clearing master fd");
         let mut fd_guard = master_fd.lock().unwrap();
         *fd_guard = None;
+        log::info!("Master fd cleared");
     }
 
-    // The signal handler thread will exit when it detects the fd is None
-    // Wait for it to finish
+    log::info!("Waiting for signal handler thread to finish");
     if let Err(e) = signal_thread.join() {
         log::warn!("Signal handler thread panicked: {e:?}");
     }
+    log::info!("Signal handler thread finished");
 
     Ok(exit_code)
 }

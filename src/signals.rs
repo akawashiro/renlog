@@ -4,17 +4,11 @@ use std::collections::HashSet;
 use std::fs;
 use std::io::Result;
 use std::os::unix::io::RawFd;
-use std::process::Child;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
 use crate::pty::{propagate_terminal_size, propagate_terminal_size_sync};
-
-pub struct SessionCallbacks {
-    pub child: Arc<Mutex<Option<Child>>>,
-    pub exit_status: Arc<Mutex<Option<i32>>>,
-    pub shutdown_flag: Arc<Mutex<bool>>,
-}
+use crate::session::SessionState;
 
 pub struct SignalHandler {
     // We'll create the signals iterator when starting the handler thread
@@ -240,7 +234,7 @@ impl SignalHandler {
     pub fn start_handler_thread(
         self,
         master_fd: Arc<Mutex<Option<RawFd>>>,
-        callbacks: SessionCallbacks,
+        callbacks: SessionState,
     ) -> JoinHandle<()> {
         thread::spawn(move || {
             log::debug!("Starting signal handler thread");
@@ -264,11 +258,12 @@ impl SignalHandler {
         self,
         mut signals: Signals,
         master_fd: Arc<Mutex<Option<RawFd>>>,
-        callbacks: SessionCallbacks,
+        callbacks: SessionState,
     ) {
         log::debug!("Starting signal handler loop");
 
         for signal in signals.forever() {
+            log::info!("Received signal: {signal}");
             // Check if we should exit (master_fd is None)
             {
                 let fd_guard = master_fd.lock().unwrap();
@@ -348,7 +343,7 @@ impl SignalHandler {
         log::debug!("Signal handler loop ended");
     }
 
-    fn handle_sigchld(&self, callbacks: &SessionCallbacks) {
+    fn handle_sigchld(&self, callbacks: &SessionState) {
         log::info!("Handling child process termination");
 
         let mut child_guard = callbacks.child.lock().unwrap();
@@ -358,12 +353,15 @@ impl SignalHandler {
                     let exit_code = status.code().unwrap_or(-1);
                     log::info!("Child process exited with status: {exit_code}");
 
+                    log::info!("Setting exit status...");
                     let mut exit_status_guard = callbacks.exit_status.lock().unwrap();
                     *exit_status_guard = Some(exit_code);
+                    log::info!("Exit status set to {exit_code}");
 
-                    // Signal shutdown
+                    log::info!("Signaling shutdown...");
                     let mut shutdown_guard = callbacks.shutdown_flag.lock().unwrap();
                     *shutdown_guard = true;
+                    log::info!("Shutdown signaled");
                 }
                 Ok(None) => {
                     log::debug!("Child process still running, putting it back");
@@ -374,8 +372,10 @@ impl SignalHandler {
                     let mut exit_status_guard = callbacks.exit_status.lock().unwrap();
                     *exit_status_guard = Some(255);
 
+                    log::info!("Signaling shutdown due to error...");
                     let mut shutdown_guard = callbacks.shutdown_flag.lock().unwrap();
                     *shutdown_guard = true;
+                    log::info!("Shutdown signaled");
                 }
             }
         } else {
@@ -383,7 +383,7 @@ impl SignalHandler {
         }
     }
 
-    fn handle_sighup(&self, callbacks: &SessionCallbacks) {
+    fn handle_sighup(&self, callbacks: &SessionState) {
         log::info!("Handling session hangup - initiating graceful shutdown");
 
         // Signal graceful shutdown
@@ -391,7 +391,7 @@ impl SignalHandler {
         *shutdown_guard = true;
     }
 
-    fn handle_sigint(&self, callbacks: &SessionCallbacks) {
+    fn handle_sigint(&self, callbacks: &SessionState) {
         log::info!(
             "Handling SIGINT signal - forwarding to session and process group (renlog will not exit)"
         );
@@ -406,7 +406,7 @@ impl SignalHandler {
         // Note: We do NOT set shutdown_flag here - renlog continues running
     }
 
-    fn handle_sigquit(&self, callbacks: &SessionCallbacks) {
+    fn handle_sigquit(&self, callbacks: &SessionState) {
         log::info!(
             "Handling SIGQUIT signal - forwarding to session and process group (renlog will not exit)"
         );
@@ -421,7 +421,7 @@ impl SignalHandler {
         // Note: We do NOT set shutdown_flag here - renlog continues running
     }
 
-    fn handle_sigtstp(&self, callbacks: &SessionCallbacks) {
+    fn handle_sigtstp(&self, callbacks: &SessionState) {
         log::info!(
             "Handling SIGTSTP signal - forwarding to session and process group (renlog will not exit)"
         );
