@@ -3,6 +3,7 @@ name = "renlog"
 version = "0.1.0"
 edition = "2021"
 authors = ["Akira Kawata"]
+description = "A tool to record all terminal output."
 license = "MIT"
 
 [lints.rust]
