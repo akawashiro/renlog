@@ -235,7 +235,7 @@ impl SignalHandler {
     pub fn start_handler_thread(
         self,
         master_fd: Arc<Mutex<Option<RawFd>>>,
-        callbacks: SessionState,
+        state: SessionState,
     ) -> JoinHandle<()> {
         thread::spawn(move || {
             log::debug!("Starting signal handler thread");
@@ -250,7 +250,7 @@ impl SignalHandler {
                 }
             };
 
-            self.handle_signals_sync(signals, master_fd, callbacks);
+            self.handle_signals_sync(signals, master_fd, state);
             log::debug!("Signal handler thread ending");
         })
     }
@@ -259,7 +259,7 @@ impl SignalHandler {
         self,
         mut signals: Signals,
         master_fd: Arc<Mutex<Option<RawFd>>>,
-        callbacks: SessionState,
+        state: SessionState,
     ) {
         log::debug!("Starting signal handler loop");
 
@@ -282,7 +282,7 @@ impl SignalHandler {
                         log::info!("Caught SIGWINCH signal - handling terminal resize");
 
                         // First, forward the signal to the child session
-                        let child_guard = callbacks.child.lock().unwrap();
+                        let child_guard = state.child.lock().unwrap();
                         if let Some(child) = child_guard.as_ref() {
                             let child_pid = child.id() as i32;
                             self.send_signal_to_session_and_group(
@@ -320,23 +320,23 @@ impl SignalHandler {
                     }
                     SIGCHLD => {
                         log::debug!("Caught SIGCHLD signal");
-                        self.handle_sigchld(&callbacks);
+                        self.handle_sigchld(&state);
                     }
                     SIGHUP => {
                         log::debug!("Caught SIGHUP signal");
-                        self.handle_sighup(&callbacks);
+                        self.handle_sighup(&state);
                     }
                     SIGINT => {
                         log::debug!("Caught SIGINT signal");
-                        self.handle_sigint(&callbacks);
+                        self.handle_sigint(&state);
                     }
                     SIGQUIT => {
                         log::debug!("Caught SIGQUIT signal");
-                        self.handle_sigquit(&callbacks);
+                        self.handle_sigquit(&state);
                     }
                     SIGTSTP => {
                         log::debug!("Caught SIGTSTP signal");
-                        self.handle_sigtstp(&callbacks);
+                        self.handle_sigtstp(&state);
                     }
                     _ => {
                         log::warn!("Received unexpected signal: {signal}");
@@ -351,10 +351,10 @@ impl SignalHandler {
         log::debug!("Signal handler loop ended");
     }
 
-    fn handle_sigchld(&self, callbacks: &SessionState) {
+    fn handle_sigchld(&self, state: &SessionState) {
         log::info!("Handling child process termination");
 
-        let mut child_guard = callbacks.child.lock().unwrap();
+        let mut child_guard = state.child.lock().unwrap();
         if let Some(mut child) = child_guard.take() {
             match child.try_wait() {
                 Ok(Some(status)) => {
@@ -362,12 +362,12 @@ impl SignalHandler {
                     log::info!("Child process exited with status: {exit_code}");
 
                     log::info!("Setting exit status...");
-                    let mut exit_status_guard = callbacks.exit_status.lock().unwrap();
+                    let mut exit_status_guard = state.exit_status.lock().unwrap();
                     *exit_status_guard = Some(exit_code);
                     log::info!("Exit status set to {exit_code}");
 
                     log::info!("Signaling shutdown...");
-                    let mut shutdown_guard = callbacks.shutdown_flag.lock().unwrap();
+                    let mut shutdown_guard = state.shutdown_flag.lock().unwrap();
                     *shutdown_guard = true;
                     log::info!("Shutdown signaled");
                 }
@@ -377,11 +377,11 @@ impl SignalHandler {
                 }
                 Err(e) => {
                     log::error!("Error checking child process status: {e}");
-                    let mut exit_status_guard = callbacks.exit_status.lock().unwrap();
+                    let mut exit_status_guard = state.exit_status.lock().unwrap();
                     *exit_status_guard = Some(255);
 
                     log::info!("Signaling shutdown due to error...");
-                    let mut shutdown_guard = callbacks.shutdown_flag.lock().unwrap();
+                    let mut shutdown_guard = state.shutdown_flag.lock().unwrap();
                     *shutdown_guard = true;
                     log::info!("Shutdown signaled");
                 }
@@ -391,20 +391,20 @@ impl SignalHandler {
         }
     }
 
-    fn handle_sighup(&self, callbacks: &SessionState) {
+    fn handle_sighup(&self, state: &SessionState) {
         log::info!("Handling session hangup - initiating graceful shutdown");
 
         // Signal graceful shutdown
-        let mut shutdown_guard = callbacks.shutdown_flag.lock().unwrap();
+        let mut shutdown_guard = state.shutdown_flag.lock().unwrap();
         *shutdown_guard = true;
     }
 
-    fn handle_sigint(&self, callbacks: &SessionState) {
+    fn handle_sigint(&self, state: &SessionState) {
         log::info!(
             "Handling SIGINT signal - forwarding to session and process group (renlog will not exit)"
         );
 
-        let child_guard = callbacks.child.lock().unwrap();
+        let child_guard = state.child.lock().unwrap();
         if let Some(child) = child_guard.as_ref() {
             let child_pid = child.id() as i32;
             self.send_signal_to_session_and_group(child_pid, libc::SIGINT, "SIGINT");
@@ -414,12 +414,12 @@ impl SignalHandler {
         // Note: We do NOT set shutdown_flag here - renlog continues running
     }
 
-    fn handle_sigquit(&self, callbacks: &SessionState) {
+    fn handle_sigquit(&self, state: &SessionState) {
         log::info!(
             "Handling SIGQUIT signal - forwarding to session and process group (renlog will not exit)"
         );
 
-        let child_guard = callbacks.child.lock().unwrap();
+        let child_guard = state.child.lock().unwrap();
         if let Some(child) = child_guard.as_ref() {
             let child_pid = child.id() as i32;
             self.send_signal_to_session_and_group(child_pid, libc::SIGQUIT, "SIGQUIT");
@@ -429,12 +429,12 @@ impl SignalHandler {
         // Note: We do NOT set shutdown_flag here - renlog continues running
     }
 
-    fn handle_sigtstp(&self, callbacks: &SessionState) {
+    fn handle_sigtstp(&self, state: &SessionState) {
         log::info!(
             "Handling SIGTSTP signal - forwarding to session and process group (renlog will not exit)"
         );
 
-        let child_guard = callbacks.child.lock().unwrap();
+        let child_guard = state.child.lock().unwrap();
         if let Some(child) = child_guard.as_ref() {
             let child_pid = child.id() as i32;
             self.send_signal_to_session_and_group(child_pid, libc::SIGTSTP, "SIGTSTP");
