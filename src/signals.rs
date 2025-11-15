@@ -3,8 +3,6 @@ use signal_hook::iterator::Signals;
 use std::collections::HashSet;
 use std::fs;
 use std::io::Result;
-use std::os::unix::io::RawFd;
-use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
@@ -232,11 +230,7 @@ impl SignalHandler {
         }
     }
 
-    pub fn start_handler_thread(
-        self,
-        master_fd: Arc<Mutex<Option<RawFd>>>,
-        state: SessionState,
-    ) -> JoinHandle<()> {
+    pub fn start_handler_thread(self, state: SessionState) -> JoinHandle<()> {
         thread::spawn(move || {
             log::debug!("Starting signal handler thread");
 
@@ -250,23 +244,18 @@ impl SignalHandler {
                 }
             };
 
-            self.handle_signals_sync(signals, master_fd, state);
+            self.handle_signals_sync(signals, state);
             log::debug!("Signal handler thread ending");
         })
     }
 
-    fn handle_signals_sync(
-        self,
-        mut signals: Signals,
-        master_fd: Arc<Mutex<Option<RawFd>>>,
-        state: SessionState,
-    ) {
+    fn handle_signals_sync(self, mut signals: Signals, state: SessionState) {
         log::debug!("Starting signal handler loop");
 
         loop {
             // Check if we should exit (master_fd is None)
             {
-                let fd_guard = master_fd.lock().unwrap();
+                let fd_guard = state.master_fd.lock().unwrap();
                 if fd_guard.is_none() {
                     log::debug!("Master fd is None, exiting signal handler");
                     break;
@@ -296,7 +285,7 @@ impl SignalHandler {
                         drop(child_guard);
 
                         // Then, propagate terminal size to our PTY master
-                        let master_fd_guard = master_fd.lock().unwrap();
+                        let master_fd_guard = state.master_fd.lock().unwrap();
                         if let Some(fd) = *master_fd_guard {
                             log::debug!("Propagating terminal size to PTY master fd: {fd}");
 

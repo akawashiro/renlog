@@ -30,6 +30,7 @@ pub struct SessionState {
     pub child: Arc<Mutex<Option<Child>>>,
     pub exit_status: Arc<Mutex<Option<i32>>>,
     pub shutdown_flag: Arc<Mutex<bool>>,
+    pub master_fd: Arc<Mutex<Option<RawFd>>>,
 }
 
 fn validate_fd(fd: RawFd, name: &str) -> Result<()> {
@@ -127,6 +128,7 @@ impl Session {
             child: Arc::new(Mutex::new(None)),
             exit_status: Arc::new(Mutex::new(None)),
             shutdown_flag: Arc::new(Mutex::new(false)),
+            master_fd: Arc::new(Mutex::new(Some(pty.master_fd()))),
         };
 
         // Start child process
@@ -421,10 +423,6 @@ impl Session {
         log::info!("Child process exited with code: {exit_code}");
         println!("Child process exited with code: {exit_code}");
         Ok(exit_code)
-    }
-
-    pub fn get_master_fd(session: &Session) -> RawFd {
-        session.pty.master_fd()
     }
 
     pub fn get_session_state(session: &Session) -> SessionState {
