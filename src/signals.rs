@@ -269,6 +269,7 @@ impl SignalHandler {
         log::debug!("Starting signal handler loop");
 
         for signal in signals.forever() {
+            log::info!("Received signal: {signal}");
             // Check if we should exit (master_fd is None)
             {
                 let fd_guard = master_fd.lock().unwrap();
@@ -358,12 +359,15 @@ impl SignalHandler {
                     let exit_code = status.code().unwrap_or(-1);
                     log::info!("Child process exited with status: {exit_code}");
 
+                    log::info!("Setting exit status...");
                     let mut exit_status_guard = callbacks.exit_status.lock().unwrap();
                     *exit_status_guard = Some(exit_code);
+                    log::info!("Exit status set to {exit_code}");
 
-                    // Signal shutdown
+                    log::info!("Signaling shutdown...");
                     let mut shutdown_guard = callbacks.shutdown_flag.lock().unwrap();
                     *shutdown_guard = true;
+                    log::info!("Shutdown signaled");
                 }
                 Ok(None) => {
                     log::debug!("Child process still running, putting it back");
@@ -374,8 +378,10 @@ impl SignalHandler {
                     let mut exit_status_guard = callbacks.exit_status.lock().unwrap();
                     *exit_status_guard = Some(255);
 
+                    log::info!("Signaling shutdown due to error...");
                     let mut shutdown_guard = callbacks.shutdown_flag.lock().unwrap();
                     *shutdown_guard = true;
+                    log::info!("Shutdown signaled");
                 }
             }
         } else {
