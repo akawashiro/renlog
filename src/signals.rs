@@ -6,6 +6,7 @@ use std::io::Result;
 use std::os::unix::io::RawFd;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
+use std::time::Duration;
 
 use crate::pty::{propagate_terminal_size, propagate_terminal_size_sync};
 use crate::session::SessionState;
@@ -262,8 +263,7 @@ impl SignalHandler {
     ) {
         log::debug!("Starting signal handler loop");
 
-        for signal in signals.forever() {
-            log::info!("Received signal: {signal}");
+        loop {
             // Check if we should exit (master_fd is None)
             {
                 let fd_guard = master_fd.lock().unwrap();
@@ -273,71 +273,79 @@ impl SignalHandler {
                 }
             }
 
-            match signal {
-                SIGWINCH => {
-                    log::info!("Caught SIGWINCH signal - handling terminal resize");
+            // Process any pending signals (non-blocking)
+            for signal in signals.pending() {
+                log::info!("Received signal: {signal}");
 
-                    // First, forward the signal to the child session
-                    let child_guard = callbacks.child.lock().unwrap();
-                    if let Some(child) = child_guard.as_ref() {
-                        let child_pid = child.id() as i32;
-                        self.send_signal_to_session_and_group(
-                            child_pid,
-                            libc::SIGWINCH,
-                            "SIGWINCH",
-                        );
-                    } else {
-                        log::debug!("No child process to forward SIGWINCH to");
-                    }
-                    drop(child_guard);
+                match signal {
+                    SIGWINCH => {
+                        log::info!("Caught SIGWINCH signal - handling terminal resize");
 
-                    // Then, propagate terminal size to our PTY master
-                    let master_fd_guard = master_fd.lock().unwrap();
-                    if let Some(fd) = *master_fd_guard {
-                        log::debug!("Propagating terminal size to PTY master fd: {fd}");
+                        // First, forward the signal to the child session
+                        let child_guard = callbacks.child.lock().unwrap();
+                        if let Some(child) = child_guard.as_ref() {
+                            let child_pid = child.id() as i32;
+                            self.send_signal_to_session_and_group(
+                                child_pid,
+                                libc::SIGWINCH,
+                                "SIGWINCH",
+                            );
+                        } else {
+                            log::debug!("No child process to forward SIGWINCH to");
+                        }
+                        drop(child_guard);
 
-                        // Try synchronous propagation first for immediate response
-                        if let Err(e) = propagate_terminal_size_sync(libc::STDIN_FILENO, fd) {
-                            log::error!("Synchronous terminal size propagation failed: {e}");
-                            // Fall back to async propagation
-                            if let Err(e) = propagate_terminal_size(libc::STDIN_FILENO, fd) {
-                                log::error!("Failed to propagate terminal size: {e}");
+                        // Then, propagate terminal size to our PTY master
+                        let master_fd_guard = master_fd.lock().unwrap();
+                        if let Some(fd) = *master_fd_guard {
+                            log::debug!("Propagating terminal size to PTY master fd: {fd}");
+
+                            // Try synchronous propagation first for immediate response
+                            if let Err(e) = propagate_terminal_size_sync(libc::STDIN_FILENO, fd) {
+                                log::error!("Synchronous terminal size propagation failed: {e}");
+                                // Fall back to async propagation
+                                if let Err(e) = propagate_terminal_size(libc::STDIN_FILENO, fd) {
+                                    log::error!("Failed to propagate terminal size: {e}");
+                                } else {
+                                    log::info!(
+                                        "Terminal size propagated successfully (async fallback)"
+                                    );
+                                }
                             } else {
-                                log::info!(
-                                    "Terminal size propagated successfully (async fallback)"
-                                );
+                                log::info!("Terminal size propagated successfully (sync)");
                             }
                         } else {
-                            log::info!("Terminal size propagated successfully (sync)");
+                            log::warn!("No PTY master fd available for terminal size propagation");
                         }
-                    } else {
-                        log::warn!("No PTY master fd available for terminal size propagation");
+                    }
+                    SIGCHLD => {
+                        log::debug!("Caught SIGCHLD signal");
+                        self.handle_sigchld(&callbacks);
+                    }
+                    SIGHUP => {
+                        log::debug!("Caught SIGHUP signal");
+                        self.handle_sighup(&callbacks);
+                    }
+                    SIGINT => {
+                        log::debug!("Caught SIGINT signal");
+                        self.handle_sigint(&callbacks);
+                    }
+                    SIGQUIT => {
+                        log::debug!("Caught SIGQUIT signal");
+                        self.handle_sigquit(&callbacks);
+                    }
+                    SIGTSTP => {
+                        log::debug!("Caught SIGTSTP signal");
+                        self.handle_sigtstp(&callbacks);
+                    }
+                    _ => {
+                        log::warn!("Received unexpected signal: {signal}");
                     }
                 }
-                SIGCHLD => {
-                    log::debug!("Caught SIGCHLD signal");
-                    self.handle_sigchld(&callbacks);
-                }
-                SIGHUP => {
-                    log::debug!("Caught SIGHUP signal");
-                    self.handle_sighup(&callbacks);
-                }
-                SIGINT => {
-                    log::debug!("Caught SIGINT signal");
-                    self.handle_sigint(&callbacks);
-                }
-                SIGQUIT => {
-                    log::debug!("Caught SIGQUIT signal");
-                    self.handle_sigquit(&callbacks);
-                }
-                SIGTSTP => {
-                    log::debug!("Caught SIGTSTP signal");
-                    self.handle_sigtstp(&callbacks);
-                }
-                _ => {
-                    log::warn!("Received unexpected signal: {signal}");
-                }
             }
+
+            // Sleep briefly before checking again
+            thread::sleep(Duration::from_millis(50));
         }
 
         log::debug!("Signal handler loop ended");
