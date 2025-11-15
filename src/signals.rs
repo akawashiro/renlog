@@ -322,6 +322,14 @@ impl SignalHandler {
                 SIGCHLD => {
                     log::debug!("Caught SIGCHLD signal");
                     self.handle_sigchld(&callbacks);
+
+                    // Check if shutdown was requested after handling SIGCHLD
+                    let shutdown_guard = callbacks.shutdown_flag.lock().unwrap();
+                    if *shutdown_guard {
+                        log::debug!("Shutdown flag set after SIGCHLD, exiting signal handler");
+                        drop(shutdown_guard);
+                        break;
+                    }
                 }
                 SIGHUP => {
                     log::debug!("Caught SIGHUP signal");
