@@ -15,7 +15,6 @@ use shell_config::{show_shell_rc, ShellType};
 use signals::SignalHandler;
 use std::io::Result;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
 use symlink_utils::create_or_update_symlink;
 
 #[derive(Parser)]
@@ -137,12 +136,11 @@ fn run_pty_session(
     Session::start_forwarders(&session)?;
 
     // Set up signal handling with all signals
-    let master_fd = Arc::new(Mutex::new(Some(Session::get_master_fd(&session))));
     let session_state = Session::get_session_state(&session);
     let signal_handler = SignalHandler::new()?;
 
     // Spawn signal handler thread
-    let signal_thread = signal_handler.start_handler_thread(master_fd.clone(), session_state);
+    let signal_thread = signal_handler.start_handler_thread(session_state.clone());
 
     let exit_code = Session::wait_for_child(&session)?;
     log::info!("Child process exited with code: {exit_code}");
@@ -150,7 +148,7 @@ fn run_pty_session(
     // Clear the master fd to stop signal handling
     {
         log::info!("Clearing master fd");
-        let mut fd_guard = master_fd.lock().unwrap();
+        let mut fd_guard = session_state.master_fd.lock().unwrap();
         *fd_guard = None;
         log::info!("Master fd cleared");
     }
