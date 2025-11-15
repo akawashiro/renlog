@@ -18,15 +18,14 @@ use std::time::Duration;
 
 pub struct Session {
     pty: PtyPair,
-    child: Arc<Mutex<Option<Child>>>,
     original_termios: Option<Termios>,
     pid: u32,
     renlog_dir: PathBuf,
-    exit_status: Arc<Mutex<Option<i32>>>,
-    shutdown_flag: Arc<Mutex<bool>>,
     log_filter_cmd: Option<String>,
+    state: SessionState,
 }
 
+#[derive(Clone)]
 pub struct SessionState {
     pub child: Arc<Mutex<Option<Child>>>,
     pub exit_status: Arc<Mutex<Option<i32>>>,
@@ -124,21 +123,29 @@ impl Session {
             log::info!("Terminal set to cbreak mode successfully");
         }
 
-        let child_arc = Arc::new(Mutex::new(None));
+        let state = SessionState {
+            child: Arc::new(Mutex::new(None)),
+            exit_status: Arc::new(Mutex::new(None)),
+            shutdown_flag: Arc::new(Mutex::new(false)),
+        };
 
         // Start child process
-        Self::start_child(&pty, user_specified_shell_cmd, pid, renlog_dir, &child_arc)?;
+        Self::start_child(
+            &pty,
+            user_specified_shell_cmd,
+            pid,
+            renlog_dir,
+            &state.child,
+        )?;
 
         log::info!("Session instance created successfully");
         Ok(Session {
             pty,
-            child: child_arc,
             original_termios,
             pid,
             renlog_dir: renlog_dir.to_path_buf(),
-            exit_status: Arc::new(Mutex::new(None)),
-            shutdown_flag: Arc::new(Mutex::new(false)),
             log_filter_cmd: log_filter_cmd.map(|s| s.to_string()),
+            state,
         })
     }
 
@@ -395,7 +402,7 @@ impl Session {
 
         // Wait for shutdown flag to be set by signal handler
         loop {
-            let shutdown_guard = session.shutdown_flag.lock().unwrap();
+            let shutdown_guard = session.state.shutdown_flag.lock().unwrap();
             if *shutdown_guard {
                 drop(shutdown_guard);
                 break;
@@ -407,7 +414,7 @@ impl Session {
         }
 
         // Get the exit status set by the signal handler
-        let exit_status_guard = session.exit_status.lock().unwrap();
+        let exit_status_guard = session.state.exit_status.lock().unwrap();
         let exit_code = exit_status_guard.unwrap_or(0);
         drop(exit_status_guard);
 
@@ -421,11 +428,7 @@ impl Session {
     }
 
     pub fn get_session_state(session: &Session) -> SessionState {
-        SessionState {
-            child: session.child.clone(),
-            exit_status: session.exit_status.clone(),
-            shutdown_flag: session.shutdown_flag.clone(),
-        }
+        session.state.clone()
     }
 }
 
@@ -444,7 +447,7 @@ impl Drop for Session {
         }
 
         // Kill child process if still running
-        if let Ok(mut child_guard) = self.child.lock() {
+        if let Ok(mut child_guard) = self.state.child.lock() {
             if let Some(mut child) = child_guard.take() {
                 log::debug!("Killing child process with PID: {}", child.id());
                 if let Err(e) = child.kill() {
