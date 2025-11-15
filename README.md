@@ -18,7 +18,7 @@ Add the following to your `~/.zshrc` to automatically start renlog when opening 
 
 ```zsh
 if which renlog > /dev/null 2>&1; then
-    if [[ "$(ps -o comm= -p $PPID)" != "renlog" ]]; then
+    if [[ -z "$RENLOG_PID" ]]; then
         renlog_dir=/tmp/renlog
         exec renlog --log-level info log --renlog-dir ${renlog_dir} --cmd 'zsh -l'
     else
