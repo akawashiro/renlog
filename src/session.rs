@@ -27,6 +27,12 @@ pub struct Session {
     log_filter_cmd: Option<String>,
 }
 
+pub struct SessionState {
+    pub child: Arc<Mutex<Option<Child>>>,
+    pub exit_status: Arc<Mutex<Option<i32>>>,
+    pub shutdown_flag: Arc<Mutex<bool>>,
+}
+
 fn validate_fd(fd: RawFd, name: &str) -> Result<()> {
     use nix::fcntl::{fcntl, FcntlArg};
 
@@ -414,8 +420,8 @@ impl Session {
         session.pty.master_fd()
     }
 
-    pub fn get_session_callbacks(session: &Session) -> crate::signals::SessionCallbacks {
-        crate::signals::SessionCallbacks {
+    pub fn get_session_state(session: &Session) -> SessionState {
+        SessionState {
             child: session.child.clone(),
             exit_status: session.exit_status.clone(),
             shutdown_flag: session.shutdown_flag.clone(),

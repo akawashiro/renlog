@@ -138,11 +138,11 @@ fn run_pty_session(
 
     // Set up signal handling with all signals
     let master_fd = Arc::new(Mutex::new(Some(Session::get_master_fd(&session))));
-    let session_callbacks = Session::get_session_callbacks(&session);
+    let session_state = Session::get_session_state(&session);
     let signal_handler = SignalHandler::new()?;
 
     // Spawn signal handler thread
-    let signal_thread = signal_handler.start_handler_thread(master_fd.clone(), session_callbacks);
+    let signal_thread = signal_handler.start_handler_thread(master_fd.clone(), session_state);
 
     let exit_code = Session::wait_for_child(&session)?;
     log::info!("Child process exited with code: {exit_code}");
