@@ -5,9 +5,7 @@ renlog is a Rust re-implementation of [Zenlog](https://github.com/omakoto/zenlog
 ## Install
 
 ```bash
-git clone git@github.com:akawashiro/renlog.git
-cd renlog
-cargo install --path .
+cargo install renlog
 ```
 
 ## Shell Configuration
