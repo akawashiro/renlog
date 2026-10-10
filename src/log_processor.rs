@@ -10,11 +10,9 @@ fn get_ansi_regex() -> &'static Regex {
         Regex::new(
             r"(?x)
             \x1b\[                    # ESC[ - Control Sequence Introducer
-            (?:
-                (?:[0-9]+(?:;[0-9]+)*)  # Numeric parameters separated by semicolons
-                ?                       # Parameters are optional
-                [a-zA-Z]                # Final letter command
-            )
+            [0-?]*                    # Parameter bytes (0x30-0x3f), including : and ;
+            [\x20-\x2f]*              # Intermediate bytes (space escaped for verbose mode)
+            [@-~]                     # Final byte (0x40-0x7e)
             |
             \x1b\]                    # ESC] - Operating System Command
             (?:
@@ -112,6 +110,55 @@ mod tests {
         let input = b"Normal text without any markers or escape codes";
         let expected = b"Normal text without any markers or escape codes";
         assert_eq!(strip_ansi_codes_and_command_markers(input), expected);
+    }
+
+    #[test]
+    fn test_strip_csi_sequences() {
+        let sequences = [
+            "\x1b[0;38:5:245m",
+            "\x1b[0;1;38:5:185m",
+            "\x1b[38:2::255:128:0m",
+            "\x1b[1;31m",
+            "\x1b[m",
+            "\x1b[2J",
+            "\x1b[?25l",
+            "\x1b[>0c",
+            "\x1b[1 q",
+            "\x1b[0~",
+            "\x1b[@",
+        ];
+
+        for sequence in sequences {
+            let input = format!("Before{sequence}After");
+            assert_eq!(
+                strip_ansi_codes_and_command_markers(input.as_bytes()),
+                b"BeforeAfter",
+                "Failed to strip {sequence:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_process_systemctl_status_output() {
+        let input = concat!(
+            "renlog-start-command systemctl status --no-pager\r\n",
+            "● masumi\r\n",
+            "  Tainted: \x1b[0;1;38:5:185munmerged-bin\x1b[0m\r\n",
+            "           ├─init.scope\r\n",
+            "           │ └─\x1b[0;38:5:245m1 /sbin/init splash\x1b[0m\r\n",
+            "renlog-end-command 0\r\n",
+            "[/tmp/renlog/unwanted.log]\r\n",
+        );
+        let expected = concat!(
+            "● masumi\n",
+            "  Tainted: unmerged-bin\n",
+            "           ├─init.scope\n",
+            "           │ └─1 /sbin/init splash\n",
+        );
+        assert_eq!(
+            process_command_log_content(input.as_bytes()),
+            expected.as_bytes()
+        );
     }
 
     #[test]
