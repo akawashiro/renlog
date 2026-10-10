@@ -1,0 +1,2 @@
+- Use `gh` command always when you access GitHub
+- Make a branch from the latest main and make a PR when you implement the feature.
